@@ -27,9 +27,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 0-D COMPLETE** — Source priority matrix written and committed.
-**Phase 0-E (Data Licensing Cost Model) is next.**
-**Phase 0 (Legal Gate) is BLOCKING all engineering code.**
+**Phase 0-E COMPLETE** — Data licensing cost model written and committed.
+**Phase 0 documentation is complete. Legal gate is BLOCKING all engineering code.**
 
 No backend, frontend, or infrastructure code may be written until the FCRA determination is in hand from legal counsel. Only documentation, IaC skeletons (non-deployed), and schema design files are safe to produce during Phase 0.
 
@@ -39,7 +38,7 @@ No backend, frontend, or infrastructure code may be written until the FCRA deter
 | 0-B | FCRA architectural blueprints | ✅ Complete |
 | 0-C | ToS analysis matrix (80 sources) | ✅ Complete |
 | 0-D | Source priority matrix (P1/P2/P3 tiers, Phase 2 build sequence) | ✅ Complete |
-| 0-E | Data licensing cost model | 🔄 Up next |
+| 0-E | Data licensing cost model (unit economics, CRA delta, break-even) | ✅ Complete |
 
 ---
 
@@ -117,6 +116,7 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docs/reference/fcra-blueprints.md` | CRA vs. non-CRA architectural blueprints for legal counsel |
 | `docs/reference/tos-matrix.md` | ToS analysis matrix — 80 sources, risk tiers, legal sign-off status |
 | `docs/reference/source-priority.md` | Source Priority Matrix — P1/P2/P3 ranking, Phase 2 adapter build sequence |
+| `docs/reference/cost-model.md` | Data Licensing Cost Model — unit economics, CRA delta, break-even analysis |
 | `DECISIONS.md` | Log of all deviations from the locked plan |
 | `docs/session-logs/` | Per-session build logs |
 
@@ -133,4 +133,15 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 0-E:** Write the Data Licensing Cost Model — unit economics per report at different volumes, CRA vs. non-CRA cost scenarios, and per-source data cost estimates. Output: `docs/reference/cost-model.md`.
+**Phase 0 is complete.** All five Phase 0 documentation deliverables have been committed.
+
+The next milestone is the legal gate: FCRA determination from counsel. Once the legal gate closes and the FCRA path is locked, Phase 1 (Foundations) can begin with canonical schema design, Terraform skeleton, and auth service shell.
+
+While waiting on the legal gate, high-value parallel actions:
+1. Engage FSMB DocInfo for enterprise API pricing
+2. Engage ABMS for enterprise subscription pricing
+3. Engage Ribbon Health for pricing tiers
+4. Engage FCRA-specialized counsel using `docs/reference/fcra-blueprints.md` as the brief
+5. Resolve T4 architectural decisions (Healthgrades, Vitals, Doximity)
+6. Lock Auth0 vs. Okta (DECISIONS.md Entry 002)
+7. Lock AWS account, region, and domain (DECISIONS.md Entry 003)
