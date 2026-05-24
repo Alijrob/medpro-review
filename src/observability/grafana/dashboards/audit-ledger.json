@@ -1,0 +1,90 @@
+{
+  "uid": "medpro-audit-ledger",
+  "title": "medpro-review — Audit Ledger Integrity",
+  "tags": ["medpro-review", "audit", "compliance"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Audit Chain Checkpoint Lag",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 300 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "audit:chain_checkpoint_lag_seconds:max", "refId": "A", "legendFormat": "lag" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Audit Write Failure Rate (5m)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.001 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "audit:write_failures:rate5m", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Hash Mismatches (10m increase)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "increase(audit_chain_hash_mismatch_total[10m])", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Audit Events Written (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        { "expr": "sum(rate(audit_event_written_total[5m]))", "refId": "A", "legendFormat": "events/s" }
+      ]
+    }
+  ]
+}

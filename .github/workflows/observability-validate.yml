@@ -1,0 +1,32 @@
+name: Observability Validate
+
+on:
+  push:
+    paths:
+      - "src/observability/**"
+      - "tests/observability/**"
+  pull_request:
+    paths:
+      - "src/observability/**"
+      - "tests/observability/**"
+
+jobs:
+  config-validate:
+    name: Validate Observability Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: pip install pytest pyyaml
+
+      # Structural + syntax + PII-scrub + no-secrets checks. No live cluster.
+      # NOTE: PLACEHOLDER values (S3 buckets, region) are EXPECTED in this
+      # non-deployed phase. The placeholder guard is a deploy-time gate enforced
+      # in Phase 1-E (ArgoCD/GitOps), not here.
+      - name: Run observability config tests
+        run: PYTHONPATH=src pytest tests/observability/ -v

@@ -1,0 +1,15 @@
+# =============================================================================
+# observability namespace
+# =============================================================================
+# Phase: 1-D. Status: NON-DEPLOYED.
+# The IRSA role for this namespace already exists in the infra iam module
+# (app_namespaces includes "observability"). The service account named
+# "observability" is bound to that role at deploy time.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/part-of: medpro-review
+    pod-security.kubernetes.io/enforce: restricted

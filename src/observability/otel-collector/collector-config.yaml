@@ -1,0 +1,137 @@
+# =============================================================================
+# OpenTelemetry Collector — gateway pipeline config
+# =============================================================================
+# Project:  medpro-review (researchyourdoctor.com)
+# Phase:    1-D — Observability Stack Config
+# Status:   NON-DEPLOYED. Applied by ArgoCD once DECISIONS.md Entry 003 (AWS
+#           account/region) is resolved and the EKS cluster exists.
+#
+# Role: single OTLP ingest point for all 12 services. Receives traces, metrics,
+# and logs over OTLP, enriches them with Kubernetes + resource attributes, then
+# fans out:
+#     traces  -> Tempo
+#     metrics -> Prometheus (remote_write)
+#     logs    -> Loki
+#
+# Deployed as a Deployment (gateway mode) in the `observability` namespace via
+# the opentelemetry-collector Helm chart. A separate lightweight agent runs as a
+# DaemonSet (see values.yaml) and forwards to this gateway.
+#
+# PLACEHOLDER tokens are filled by Helm values / External Secrets at deploy time.
+# Nothing here embeds an account ID, endpoint host, or credential.
+# =============================================================================
+
+receivers:
+  # All services push OTLP via the SDK (opentelemetry-instrumentation-fastapi).
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Scrape the collector's own internal telemetry.
+  prometheus/self:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+
+processors:
+  # Guard against OOM under burst load. Drops data before the collector dies.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # Batch for export efficiency.
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  # Tag every signal with the cluster/env so dashboards can filter.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:OTEL_ENVIRONMENT} # dev | staging | production
+        action: upsert
+      - key: service.namespace
+        value: medpro
+        action: upsert
+
+  # Enrich with pod/node/namespace metadata from the k8s API.
+  k8sattributes:
+    auth_type: serviceAccount
+    passthrough: false
+    extract:
+      metadata:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.node.name
+        - k8s.deployment.name
+        - k8s.pod.uid
+
+  # PII scrubbing. Healthcare data must never reach a trace/log backend. This
+  # strips known sensitive span/log attributes before export. Sentry has its own
+  # before_send scrubber (see sentry/sentry_config.py); this is defense in depth.
+  attributes/scrub_pii:
+    actions:
+      - key: provider.ssn
+        action: delete
+      - key: provider.dob
+        action: delete
+      - key: user.email
+        action: delete
+      - key: user.full_name
+        action: delete
+      - key: http.request.body
+        action: delete
+      - key: db.statement
+        action: hash
+
+exporters:
+  # Traces -> Tempo (OTLP gRPC).
+  otlp/tempo:
+    endpoint: ${env:TEMPO_ENDPOINT} # tempo.observability.svc:4317
+    tls:
+      insecure: true # in-cluster mTLS handled by the mesh; not over public net
+
+  # Metrics -> Prometheus via remote_write.
+  prometheusremotewrite:
+    endpoint: ${env:PROMETHEUS_RW_ENDPOINT} # http://prometheus.observability.svc:9090/api/v1/write
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Logs -> Loki (OTLP).
+  otlphttp/loki:
+    endpoint: ${env:LOKI_ENDPOINT} # http://loki.observability.svc:3100/otlp
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+service:
+  extensions: [health_check, pprof]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, k8sattributes, resource, attributes/scrub_pii, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp, prometheus/self]
+      processors: [memory_limiter, k8sattributes, resource, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, k8sattributes, resource, attributes/scrub_pii, batch]
+      exporters: [otlphttp/loki]

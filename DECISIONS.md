@@ -92,4 +92,24 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 009 — Observability Deployment Topology (Phase 1-D)
+
+**Date:** 2026-05-24
+**Decision:** The locked observability stack (OpenTelemetry → Prometheus, Loki, Tempo, Grafana, Sentry) is deployed as:
+- OTel Collector in **agent (DaemonSet) + gateway (Deployment)** mode. All 12 services push OTLP to the gateway, which fans out to the three backends.
+- **kube-prometheus-stack** for Prometheus + Alertmanager (bundled Grafana disabled).
+- **Grafana** from its own chart, with datasources and dashboards provisioned from `src/observability/grafana/`.
+- **Loki and Tempo** back their storage on **S3** (IRSA, no static credentials), retention 30d logs / 14d traces.
+- All secrets (Grafana admin, Sentry DSNs) pulled from **AWS Secrets Manager via External Secrets Operator**.
+- PII scrubbing enforced at two layers: OTel collector processor + Sentry `before_send`.
+
+**Reason:** Matches the locked stack and the existing infra (EKS `observability` namespace + IRSA already provisioned in the iam module). Config-as-code, non-deployed, consistent with the Phase 1-B IaC pattern.
+
+**Open sub-item (Unresolved):** **Sentry SaaS vs. self-hosted** is not yet decided. SaaS is faster to operate but sends error payloads off-cluster — a data-residency consideration for regulated healthcare-adjacent data. Self-hosted keeps everything in-VPC at higher ops cost. PII scrubbing is mandatory either way and is already implemented. Must be decided before Sentry is actually wired (Phase 1-F, when services exist).
+
+**Impact:** Phase 1-D config is complete and validated. Deployment waits on Entry 003 (AWS account/region) and the Phase 1-E GitOps layer.
+**Locked:** Topology yes; Sentry hosting mode no.
+
+---
+
 <!-- Add new entries below this line -->

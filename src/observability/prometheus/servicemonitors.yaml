@@ -1,0 +1,53 @@
+# =============================================================================
+# ServiceMonitors — medpro-review services
+# =============================================================================
+# Phase:  1-D. Status: NON-DEPLOYED.
+# CRD:    monitoring.coreos.com/v1 (Prometheus Operator, from kube-prometheus-stack).
+#
+# One ServiceMonitor per deployable service (matches the 12 ECR repositories).
+# Each selects pods in the `medpro` namespace by app label and scrapes /metrics.
+# Services expose Prometheus metrics on port `metrics` (9464, the OTel SDK
+# Prometheus exporter default) in addition to pushing OTLP to the collector.
+#
+# Most app metrics arrive via OTLP -> collector -> remote_write. These
+# ServiceMonitors cover the pull-based fallback and infra exporters that do not
+# push OTLP (opa-sidecar, audit-writer health endpoint).
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: medpro-services
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: ["medpro"]
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/part-of
+        operator: In
+        values:
+          - api-gateway
+          - identity-resolver
+          - normalization-worker
+          - entity-linker
+          - report-generator
+          - source-adapter
+          - source-health-monitor
+          - data-quality
+          - dispute-worker
+          - notifications
+          - audit-writer
+          - opa-sidecar
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        # Carry the app name through as service_name so it lines up with the
+        # service.name OTLP attribute used in recording rules and dashboards.
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+          targetLabel: service_name

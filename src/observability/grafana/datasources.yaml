@@ -1,0 +1,50 @@
+# =============================================================================
+# Grafana datasource provisioning — medpro-review
+# =============================================================================
+# Phase:  1-D. Status: NON-DEPLOYED.
+# Mounted into Grafana at /etc/grafana/provisioning/datasources/ via the Helm
+# chart (see grafana-values.yaml). Wires the three backends + trace<->log
+# correlation (Tempo exemplars -> Loki, derived fields).
+# =============================================================================
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus-operated.observability.svc.cluster.local:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 30s
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki-gateway.observability.svc.cluster.local:3100
+    jsonData:
+      # Pull a trace from a log line tagged with trace_id, jump to Tempo.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":"(\w+)"'
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo-query-frontend.observability.svc.cluster.local:3100
+    jsonData:
+      # From a span, jump to the matching logs in Loki.
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        tags: [{ key: "service.name", value: "service_name" }]
+      serviceMap:
+        datasourceUid: prometheus

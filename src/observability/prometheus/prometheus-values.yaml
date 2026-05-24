@@ -1,0 +1,89 @@
+# =============================================================================
+# Helm values — kube-prometheus-stack
+# =============================================================================
+# Chart:  prometheus-community/kube-prometheus-stack
+# Version: pinned at deploy time in the ArgoCD Application (Phase 1-E).
+# Status:  NON-DEPLOYED.
+#
+# Bundles Prometheus Operator, Prometheus, Alertmanager, and Grafana. We disable
+# the bundled Grafana here and run Grafana from its own chart so dashboards and
+# datasources are provisioned from src/observability/grafana/ (see that dir).
+#
+# Recording + alerting rules from rules/ are loaded as PrometheusRule CRDs by the
+# ArgoCD Application; they are NOT inlined here.
+# =============================================================================
+
+fullnameOverride: prometheus
+
+# Grafana is managed separately (grafana/ dir + its own chart).
+grafana:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    retentionSize: "40GB"
+    replicas: 2
+
+    # remote_write target for the OTel collector's prometheusremotewrite exporter.
+    enableRemoteWriteReceiver: true
+
+    # Discover ServiceMonitors across namespaces (medpro app + observability).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+    # Persistent storage. StorageClass is created by the EKS module add-ons.
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+    nodeSelector:
+      role: system
+    tolerations:
+      - key: role
+        operator: Equal
+        value: system
+        effect: NoSchedule
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 2
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    nodeSelector:
+      role: system
+    tolerations:
+      - key: role
+        operator: Equal
+        value: system
+        effect: NoSchedule
+  # Routing tree (receivers, PagerDuty/Slack/email integrations) is configured in
+  # Phase 1-E. Until then the chart default (null receiver) applies.
+
+# Reduce noise from components we run elsewhere.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false

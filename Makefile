@@ -2,6 +2,7 @@
 
 .PHONY: dev-setup run-backend run-frontend lint test \
         infra-init infra-validate infra-plan infra-apply infra-fmt \
+        obs-validate \
         help
 
 ENV ?= dev
@@ -20,6 +21,8 @@ help:
 	@echo "  infra-init ENV=dev   terragrunt run-all init for ENV"
 	@echo "  infra-plan ENV=dev   terragrunt run-all plan for ENV"
 	@echo "  infra-apply ENV=dev  terragrunt run-all apply for ENV (requires approval)"
+	@echo ""
+	@echo "  obs-validate         Validate observability configs (Phase 1-D, no cluster needed)"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -80,3 +83,8 @@ infra-apply:
 		exit 1; \
 	fi
 	cd src/infrastructure/environments/$(ENV) && terragrunt run-all apply
+
+obs-validate:
+	@echo "Validating observability configs (Phase 1-D)..."
+	PYTHONPATH=src poetry run pytest tests/observability/ -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/observability/ -v

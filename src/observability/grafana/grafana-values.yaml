@@ -1,0 +1,74 @@
+# =============================================================================
+# Helm values — Grafana
+# =============================================================================
+# Chart:  grafana/grafana
+# Version: pinned at deploy time in the ArgoCD Application (Phase 1-E).
+# Status:  NON-DEPLOYED.
+#
+# Datasources and dashboards are provisioned from files in this directory,
+# mounted as ConfigMaps by the ArgoCD Application. The admin password is pulled
+# from AWS Secrets Manager via External Secrets Operator — never set here.
+# =============================================================================
+
+replicas: 2
+
+# Admin credentials come from a Secret created by External Secrets (see
+# k8s/external-secrets.yaml -> grafana-admin). No password in this file.
+admin:
+  existingSecret: grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+
+# Datasource provisioning (datasources.yaml mounted here).
+sidecar:
+  datasources:
+    enabled: true
+    label: grafana_datasource
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    folderAnnotation: grafana_folder
+    provider:
+      foldersFromFilesStructure: true
+
+# Dashboards in grafana/dashboards/*.json are loaded via ConfigMaps labeled
+# grafana_dashboard. The dashboardProviders block below defines the folder.
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: medpro
+        orgId: 1
+        folder: medpro-review
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/medpro
+
+grafana.ini:
+  server:
+    root_url: https://grafana.researchyourdoctor.com
+  auth:
+    disable_login_form: false
+  # SSO (Auth0/Okta) wiring is deferred to Phase 1-F when the auth provider is
+  # locked (DECISIONS.md Entry 002).
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+
+nodeSelector:
+  role: system
+
+persistence:
+  enabled: true
+  storageClassName: gp3
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi

@@ -1,0 +1,75 @@
+{
+  "uid": "medpro-source-health",
+  "title": "medpro-review — Source Health",
+  "tags": ["medpro-review", "source-health", "c24"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(source_health_available, source_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Source Availability",
+      "type": "state-timeline",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "source_health_available{source_id=~\"$source\"}",
+          "refId": "A",
+          "legendFormat": "{{source_id}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Schema Drift Events (1h increase)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "expr": "increase(source_schema_drift_detected_total{source_id=~\"$source\"}[1h])",
+          "refId": "A",
+          "legendFormat": "{{source_id}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Source Fetch p95 Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "source_fetch_duration_seconds_p95{source_id=~\"$source\"}",
+          "refId": "A",
+          "legendFormat": "{{source_id}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+# =============================================================================
+# Helm values — Loki (log aggregation)
+# =============================================================================
+# Chart:  grafana/loki
+# Version: pinned at deploy time in the ArgoCD Application (Phase 1-E).
+# Status:  NON-DEPLOYED.
+#
+# Receives logs from the OTel collector (otlphttp/loki exporter). Chunks and
+# indexes are stored in S3 via IRSA — no static AWS credentials.
+#
+# PLACEHOLDER-LOKI-BUCKET and PLACEHOLDER-AWS-REGION are filled when DECISIONS.md
+# Entry 003 (AWS account/region) is resolved. The placeholder guard in the
+# Makefile / CI blocks deploy until then.
+# =============================================================================
+
+deploymentMode: SimpleScalable
+
+loki:
+  auth_enabled: false # single-tenant; tenancy enforced at the API gateway
+
+  storage:
+    type: s3
+    bucketNames:
+      chunks: PLACEHOLDER-LOKI-BUCKET
+      ruler: PLACEHOLDER-LOKI-BUCKET
+    s3:
+      region: PLACEHOLDER-AWS-REGION
+
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  limits_config:
+    retention_period: 720h # 30 days
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    # No PII should be logged; this is a backstop on log line size.
+    max_line_size: 256kb
+
+  compactor:
+    retention_enabled: true
+    delete_request_store: s3
+
+# IRSA: bind the chart service account to the observability IRSA role (S3 rw on
+# the Loki bucket only — scoped in the infra iam module).
+serviceAccount:
+  create: false
+  name: observability
+
+read:
+  replicas: 2
+  nodeSelector:
+    role: system
+write:
+  replicas: 2
+  nodeSelector:
+    role: system
+backend:
+  replicas: 2
+  nodeSelector:
+    role: system
+
+# Self-monitoring stack from the chart is off; we monitor Loki via the OTel
+# collector + kube-prometheus-stack ServiceMonitor instead.
+monitoring:
+  selfMonitoring:
+    enabled: false
+  lokiCanary:
+    enabled: false
+test:
+  enabled: false

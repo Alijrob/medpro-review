@@ -1,0 +1,80 @@
+# =============================================================================
+# Helm values — opentelemetry-collector (gateway + agent)
+# =============================================================================
+# Chart:  open-telemetry/opentelemetry-collector
+# Version: pinned at deploy time in the ArgoCD Application (Phase 1-E).
+# Status:  NON-DEPLOYED.
+#
+# Two releases are installed from this chart:
+#   1. otel-agent   (mode: daemonset) — one per node, forwards to the gateway
+#   2. otel-gateway (mode: deployment) — runs collector-config.yaml above
+#
+# This file holds the GATEWAY values. The agent uses a trimmed variant that only
+# forwards OTLP to the gateway (no Tempo/Prom/Loki exporters).
+# =============================================================================
+
+mode: deployment
+
+replicaCount: 2
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  # tag pinned in ArgoCD Application manifest
+
+# IRSA: the observability namespace service account (see infra iam module —
+# app_namespaces includes "observability"). No static AWS credentials.
+serviceAccount:
+  create: false
+  name: observability # bound to the IRSA role by the iam module
+
+# Endpoints injected via env from External Secrets / ConfigMap at deploy time.
+extraEnvs:
+  - name: OTEL_ENVIRONMENT
+    valueFrom:
+      configMapKeyRef:
+        name: observability-env
+        key: environment
+  - name: TEMPO_ENDPOINT
+    value: "tempo.observability.svc.cluster.local:4317"
+  - name: PROMETHEUS_RW_ENDPOINT
+    value: "http://prometheus-operated.observability.svc.cluster.local:9090/api/v1/write"
+  - name: LOKI_ENDPOINT
+    value: "http://loki-gateway.observability.svc.cluster.local:3100/otlp"
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Run on the system node group (tainted), tolerate it.
+nodeSelector:
+  role: system
+tolerations:
+  - key: role
+    operator: Equal
+    value: system
+    effect: NoSchedule
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+
+# The full pipeline config lives in collector-config.yaml and is mounted via a
+# ConfigMap created by the ArgoCD Application. Setting presets to false so the
+# chart does not inject its own default pipelines.
+presets:
+  logsCollection:
+    enabled: false
+  kubernetesAttributes:
+    enabled: false # we configure k8sattributes explicitly in collector-config.yaml

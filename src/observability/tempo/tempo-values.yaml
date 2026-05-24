@@ -1,0 +1,72 @@
+# =============================================================================
+# Helm values — Tempo (distributed tracing backend)
+# =============================================================================
+# Chart:  grafana/tempo-distributed
+# Version: pinned at deploy time in the ArgoCD Application (Phase 1-E).
+# Status:  NON-DEPLOYED.
+#
+# Receives traces from the OTel collector (otlp/tempo exporter, gRPC 4317).
+# Trace blocks stored in S3 via IRSA — no static AWS credentials.
+#
+# PLACEHOLDER-TEMPO-BUCKET and PLACEHOLDER-AWS-REGION are filled when DECISIONS.md
+# Entry 003 is resolved.
+# =============================================================================
+
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: PLACEHOLDER-TEMPO-BUCKET
+      region: PLACEHOLDER-AWS-REGION
+      # credentials via IRSA; no access keys
+
+# Accept OTLP only (the collector is the single ingest path).
+distributor:
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+  replicas: 2
+  nodeSelector:
+    role: system
+
+ingester:
+  replicas: 3
+  nodeSelector:
+    role: system
+
+querier:
+  replicas: 2
+  nodeSelector:
+    role: system
+
+queryFrontend:
+  replicas: 1
+  nodeSelector:
+    role: system
+
+compactor:
+  replicas: 1
+  nodeSelector:
+    role: system
+  config:
+    compaction:
+      block_retention: 336h # 14 days of traces
+
+# IRSA service account (S3 rw on the Tempo bucket only).
+serviceAccount:
+  create: false
+  name: observability
+
+# Generate service-graph + span metrics and remote_write them to Prometheus so
+# the RED metrics in dashboards work even before app-level metrics land.
+metricsGenerator:
+  enabled: true
+  config:
+    storage:
+      remote_write:
+        - url: http://prometheus-operated.observability.svc.cluster.local:9090/api/v1/write
+  nodeSelector:
+    role: system
