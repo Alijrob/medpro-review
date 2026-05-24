@@ -27,8 +27,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 0-C COMPLETE** — FCRA blueprints and ToS analysis matrix written and committed.
-**Phase 0-D (Source Priority Matrix) is next.**
+**Phase 0-D COMPLETE** — Source priority matrix written and committed.
+**Phase 0-E (Data Licensing Cost Model) is next.**
 **Phase 0 (Legal Gate) is BLOCKING all engineering code.**
 
 No backend, frontend, or infrastructure code may be written until the FCRA determination is in hand from legal counsel. Only documentation, IaC skeletons (non-deployed), and schema design files are safe to produce during Phase 0.
@@ -38,8 +38,8 @@ No backend, frontend, or infrastructure code may be written until the FCRA deter
 | 0-A | Repo + docs bootstrap | ✅ Complete |
 | 0-B | FCRA architectural blueprints | ✅ Complete |
 | 0-C | ToS analysis matrix (80 sources) | ✅ Complete |
-| 0-D | Source priority matrix | 🔄 Up next |
-| 0-E | Data licensing cost model | ⏳ Pending |
+| 0-D | Source priority matrix (P1/P2/P3 tiers, Phase 2 build sequence) | ✅ Complete |
+| 0-E | Data licensing cost model | 🔄 Up next |
 
 ---
 
@@ -116,6 +116,7 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docs/reference/tool-recommendations.md` | Locked stack, libraries, and what to avoid |
 | `docs/reference/fcra-blueprints.md` | CRA vs. non-CRA architectural blueprints for legal counsel |
 | `docs/reference/tos-matrix.md` | ToS analysis matrix — 80 sources, risk tiers, legal sign-off status |
+| `docs/reference/source-priority.md` | Source Priority Matrix — P1/P2/P3 ranking, Phase 2 adapter build sequence |
 | `DECISIONS.md` | Log of all deviations from the locked plan |
 | `docs/session-logs/` | Per-session build logs |
 
@@ -132,4 +133,4 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 0-D:** Write the Source Priority Matrix — tier 1/2/3 ranking of all 80 sources by value, integration effort, and risk. Used to sequence Phase 2 adapter builds. Output: `docs/reference/source-priority.md`.
+**Phase 0-E:** Write the Data Licensing Cost Model — unit economics per report at different volumes, CRA vs. non-CRA cost scenarios, and per-source data cost estimates. Output: `docs/reference/cost-model.md`.
