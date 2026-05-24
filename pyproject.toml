@@ -4,12 +4,18 @@ version = "0.1.0"
 description = "Medical Professionals Review — Healthcare Provider Intelligence Platform"
 authors = ["PAGIOS <contact@pagiosystems.com>"]
 readme = "README.md"
-packages = [{ include = "schema", from = "src" }]
+packages = [
+    { include = "schema", from = "src" },
+    { include = "data", from = "src" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 pydantic = "^2.7"
 pydantic-settings = "^2.3"
+alembic = "^1.13"
+sqlalchemy = "^2.0"
+psycopg2-binary = "^2.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2"
@@ -40,3 +46,6 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: requires live PostgreSQL (DATABASE_URL + AUDIT_DATABASE_URL must be set)",
+]

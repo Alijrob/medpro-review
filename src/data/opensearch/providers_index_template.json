@@ -1,0 +1,194 @@
+{
+  "_comment": "OpenSearch index template for researchyourdoctor.com provider search (C14).",
+  "_comment2": "Apply via: PUT _index_template/providers-template",
+  "_comment3": "Target index: providers-{env} (e.g., providers-dev, providers-production)",
+
+  "index_patterns": ["providers-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 2,
+      "number_of_replicas": 1,
+      "index": {
+        "refresh_interval": "5s",
+        "max_ngram_diff": 10
+      },
+      "analysis": {
+        "analyzer": {
+          "name_analyzer": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": ["lowercase", "asciifolding", "name_ngram"]
+          },
+          "name_search_analyzer": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": ["lowercase", "asciifolding"]
+          },
+          "npi_analyzer": {
+            "type": "custom",
+            "tokenizer": "keyword",
+            "filter": ["trim"]
+          }
+        },
+        "filter": {
+          "name_ngram": {
+            "type": "ngram",
+            "min_gram": 3,
+            "max_gram": 10
+          }
+        }
+      }
+    },
+    "mappings": {
+      "dynamic": "strict",
+      "properties": {
+
+        "primary_npi": {
+          "type": "keyword",
+          "analyzer": "npi_analyzer",
+          "doc_values": true,
+          "_comment": "10-digit NPI — primary search key and document ID"
+        },
+
+        "entity_type": {
+          "type": "keyword",
+          "_comment": "individual | organization"
+        },
+
+        "primary_name": {
+          "type": "object",
+          "properties": {
+            "first": {
+              "type": "text",
+              "analyzer": "name_analyzer",
+              "search_analyzer": "name_search_analyzer",
+              "fields": {
+                "keyword": { "type": "keyword" }
+              }
+            },
+            "last": {
+              "type": "text",
+              "analyzer": "name_analyzer",
+              "search_analyzer": "name_search_analyzer",
+              "fields": {
+                "keyword": { "type": "keyword" }
+              }
+            },
+            "middle": {
+              "type": "text",
+              "analyzer": "name_analyzer",
+              "search_analyzer": "name_search_analyzer"
+            },
+            "credentials": {
+              "type": "keyword",
+              "_comment": "MD, DO, NP, PA — filter facet"
+            },
+            "full_name_display": {
+              "type": "text",
+              "analyzer": "name_analyzer",
+              "search_analyzer": "name_search_analyzer",
+              "_comment": "Denormalized full name for single-field search UX"
+            }
+          }
+        },
+
+        "name_variants": {
+          "type": "text",
+          "analyzer": "name_analyzer",
+          "search_analyzer": "name_search_analyzer",
+          "_comment": "All alternate name forms — former names, aliases. Searched alongside primary_name."
+        },
+
+        "primary_specialty": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "keyword" },
+            "description": {
+              "type": "text",
+              "fields": {
+                "keyword": { "type": "keyword" }
+              }
+            }
+          }
+        },
+
+        "all_taxonomy_descriptions": {
+          "type": "text",
+          "_comment": "All taxonomy code descriptions flattened for keyword search"
+        },
+
+        "known_states": {
+          "type": "keyword",
+          "_comment": "2-letter state codes from known_addresses — filter facet"
+        },
+
+        "known_cities": {
+          "type": "keyword",
+          "_comment": "City names from known_addresses — filter facet"
+        },
+
+        "practice_zip_codes": {
+          "type": "keyword",
+          "_comment": "ZIP codes from practice addresses — geo filter"
+        },
+
+        "gender": {
+          "type": "keyword"
+        },
+
+        "identity_confidence": {
+          "type": "float",
+          "_comment": "0.0-1.0 — used to boost high-confidence results in ranking"
+        },
+
+        "has_active_license": {
+          "type": "boolean",
+          "_comment": "Derived: true if any license in canonical profile has status=active"
+        },
+
+        "has_active_exclusion": {
+          "type": "boolean",
+          "_comment": "Derived: true if OIG LEIE or SAM.gov has active exclusion"
+        },
+
+        "has_active_discipline": {
+          "type": "boolean",
+          "_comment": "Derived from disciplinary_actions.is_active"
+        },
+
+        "overall_risk_score": {
+          "type": "float",
+          "_comment": "DerivedSignal OVERALL_RISK_SCORE value — 0.0 (low) to 1.0 (high)"
+        },
+
+        "source_coverage_count": {
+          "type": "integer",
+          "_comment": "Number of distinct source categories in profile (max 7)"
+        },
+
+        "report_count": {
+          "type": "integer",
+          "_comment": "Number of completed reports generated for this provider"
+        },
+
+        "profile_last_rebuilt_at": {
+          "type": "date",
+          "format": "strict_date_time||epoch_millis"
+        },
+
+        "last_indexed_at": {
+          "type": "date",
+          "format": "strict_date_time||epoch_millis",
+          "_comment": "When this document was last synced from canonical_provider_profiles"
+        }
+      }
+    }
+  },
+  "priority": 100,
+  "version": 1,
+  "_meta": {
+    "description": "researchyourdoctor.com provider search index (C14)",
+    "schema_version": "v1",
+    "managed_by": "medpro-review Phase 1-C"
+  }
+}

@@ -1,0 +1,104 @@
+# docker-compose.dev.yml — Local development data stores
+#
+# Starts PostgreSQL, Redis, and OpenSearch for local development.
+# Does NOT start any application services — those run via `make run-backend`
+# and `make run-frontend` once Phase 1-F and 2-K are built.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down -v   # stop and wipe data
+#
+# After starting, run migrations:
+#   DATABASE_URL=postgresql+psycopg2://medpro_admin:devpass@localhost:5432/medpro \
+#     alembic -c src/data/migrations/alembic.ini upgrade head
+
+version: "3.9"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL (Aurora-compatible: PostgreSQL 15)
+  # Runs two databases: medpro (main) and medpro_audit (append-only ledger)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: medpro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medpro_admin
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: medpro
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/dev-init-postgres.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medpro_admin -d medpro"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Redis 7.0 (ElastiCache-compatible)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.0-alpine
+    container_name: medpro-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass devredispass
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "devredispass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # OpenSearch 2.11 (single-node for local dev)
+  # ---------------------------------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: medpro-opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - plugins.security.disabled=true   # dev only — security plugin disabled for simplicity
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=DevOpenSearch1!
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  # ---------------------------------------------------------------------------
+  # OpenSearch Dashboards (optional — comment out if not needed)
+  # ---------------------------------------------------------------------------
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: medpro-opensearch-dashboards
+    restart: unless-stopped
+    environment:
+      - OPENSEARCH_HOSTS=http://opensearch:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  opensearch_data:
