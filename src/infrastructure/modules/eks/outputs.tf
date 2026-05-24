@@ -1,0 +1,29 @@
+output "cluster_name" {
+  value = aws_eks_cluster.main.name
+}
+
+output "cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
+}
+
+output "cluster_certificate_authority" {
+  value = aws_eks_cluster.main.certificate_authority[0].data
+}
+
+output "cluster_oidc_issuer_url" {
+  description = "OIDC issuer URL (used for IRSA)"
+  value       = aws_eks_cluster.main.identity[0].oidc[0].issuer
+}
+
+output "cluster_oidc_provider_arn" {
+  description = "OIDC provider ARN (used for IRSA)"
+  value       = aws_iam_openid_connect_provider.cluster.arn
+}
+
+output "cluster_security_group_id" {
+  value = aws_security_group.cluster.id
+}
+
+output "node_group_role_arn" {
+  value = aws_iam_role.node_group.arn
+}

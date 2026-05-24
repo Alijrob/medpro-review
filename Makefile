@@ -1,44 +1,82 @@
 # Makefile — Medical Professionals Review
-# All targets are stubs until the relevant phase builds the underlying service.
 
-.PHONY: dev-setup run-backend run-frontend lint test infra-plan infra-apply help
+.PHONY: dev-setup run-backend run-frontend lint test \
+        infra-init infra-validate infra-plan infra-apply infra-fmt \
+        help
+
+ENV ?= dev
 
 help:
 	@echo "Medical Professionals Review — Make Targets"
 	@echo ""
-	@echo "  dev-setup      Install local development dependencies (idempotent)"
-	@echo "  run-backend    Start FastAPI backend dev server (Phase 1-F+)"
-	@echo "  run-frontend   Start Next.js frontend dev server (Phase 2-K+)"
-	@echo "  lint           Run all linters (Python: black/flake8/mypy; TS: eslint/prettier)"
-	@echo "  test           Run all tests (pytest + jest)"
-	@echo "  infra-plan     Terraform/Terragrunt plan (Phase 1-B+)"
-	@echo "  infra-apply    Terraform/Terragrunt apply (Phase 1-B+, requires approval)"
+	@echo "  dev-setup            Install local development dependencies (idempotent)"
+	@echo "  run-backend          Start FastAPI backend dev server (Phase 1-F+)"
+	@echo "  run-frontend         Start Next.js frontend dev server (Phase 2-K+)"
+	@echo "  lint                 Run all linters (Python: black/flake8/mypy; TS: eslint/prettier)"
+	@echo "  test                 Run all tests (pytest + jest)"
+	@echo ""
+	@echo "  infra-fmt            Check Terraform formatting (all modules)"
+	@echo "  infra-validate       Validate Terraform syntax (all modules)"
+	@echo "  infra-init ENV=dev   terragrunt run-all init for ENV"
+	@echo "  infra-plan ENV=dev   terragrunt run-all plan for ENV"
+	@echo "  infra-apply ENV=dev  terragrunt run-all apply for ENV (requires approval)"
+	@echo ""
+	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
+	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
 
 dev-setup:
 	bash scripts/dev-setup.sh
 
 run-backend:
 	@echo "[Phase 1-F not yet built] Backend service not available yet."
-	@echo "This target will launch: uvicorn src.backend.api_gateway.main:app --reload"
 
 run-frontend:
 	@echo "[Phase 2-K not yet built] Frontend not available yet."
-	@echo "This target will launch: cd src/frontend && npm run dev"
 
 lint:
-	@echo "[No source yet] Lint targets will activate when src/ is populated."
-	@# Future: cd src/backend && poetry run black --check . && poetry run flake8 . && poetry run mypy .
-	@# Future: cd src/frontend && npm run lint
+	cd src/backend && poetry run black --check . && poetry run flake8 . && poetry run mypy . 2>/dev/null || \
+		echo "[No backend source yet] lint will activate when src/backend/ is populated."
 
 test:
-	@echo "[No source yet] Test targets will activate when src/ is populated."
-	@# Future: cd src/backend && poetry run pytest
-	@# Future: cd src/frontend && npm test
+	PYTHONPATH=src poetry run pytest tests/ -v
+
+infra-fmt:
+	@echo "Checking Terraform formatting..."
+	@find src/infrastructure/modules -name "*.tf" | xargs terraform fmt -check -diff
+	@echo "All .tf files are correctly formatted."
+
+infra-validate:
+	@echo "Validating Terraform modules..."
+	@for module in src/infrastructure/modules/*/; do \
+		echo "  -> $$module"; \
+		cd $$module && terraform init -backend=false -input=false -no-color > /dev/null && \
+		terraform validate -no-color && cd - > /dev/null; \
+	done
+	@echo "All modules validated."
+
+infra-init:
+	@echo "Initializing Terragrunt for ENV=$(ENV)..."
+	@if grep -r "PLACEHOLDER" src/infrastructure/environments/$(ENV)/env.hcl > /dev/null 2>&1; then \
+		echo "ERROR: PLACEHOLDER values found in environments/$(ENV)/env.hcl"; \
+		echo "Resolve DECISIONS.md Entry 003 before running infra-init."; \
+		exit 1; \
+	fi
+	cd src/infrastructure/environments/$(ENV) && terragrunt run-all init
 
 infra-plan:
-	@echo "[Phase 1-B not yet built] Infrastructure IaC not available yet."
-	@# Future: cd src/infrastructure && terragrunt run-all plan
+	@echo "Planning Terragrunt for ENV=$(ENV)..."
+	@if grep -r "PLACEHOLDER" src/infrastructure/environments/$(ENV)/env.hcl > /dev/null 2>&1; then \
+		echo "ERROR: PLACEHOLDER values found in environments/$(ENV)/env.hcl"; \
+		echo "Resolve DECISIONS.md Entry 003 before running infra-plan."; \
+		exit 1; \
+	fi
+	cd src/infrastructure/environments/$(ENV) && terragrunt run-all plan
 
 infra-apply:
-	@echo "[Phase 1-B not yet built] Infrastructure IaC not available yet."
-	@# Future: cd src/infrastructure && terragrunt run-all apply
+	@echo "Applying Terragrunt for ENV=$(ENV)..."
+	@if grep -r "PLACEHOLDER" src/infrastructure/environments/$(ENV)/env.hcl > /dev/null 2>&1; then \
+		echo "ERROR: PLACEHOLDER values found in environments/$(ENV)/env.hcl"; \
+		echo "Resolve DECISIONS.md Entry 003 before running infra-apply."; \
+		exit 1; \
+	fi
+	cd src/infrastructure/environments/$(ENV) && terragrunt run-all apply

@@ -27,9 +27,10 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-A COMPLETE** — Canonical Schema v1 shipped. Phase 1-B (Terraform skeleton) is next.
+**Phase 1-B COMPLETE** — Terraform/Terragrunt IaC skeleton shipped. Phase 1-C (Data Store Terraform Modules) is next.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
 **Legal gate still active** — FCRA determination pending. IaC skeletons and schema are safe to build; no running services until gate closes.
+**IaC is non-deployed** — DECISIONS.md Entry 003 (AWS account/region/domain) must be resolved before `terragrunt apply`.
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
@@ -40,7 +41,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 0-E | Data licensing cost model (unit economics, CRA delta, break-even) | ✅ Complete |
 | **Path B lock** | DECISIONS.md entries 004-007 (non-CRA, QLDB removed, C23 removed, C20/C22/OPA/retention rescoped) | ✅ Complete |
 | 1-A | Canonical Schema v1 — Pydantic models + schema registry | ✅ Complete |
-| 1-B | Infrastructure Terraform Skeleton (non-deployed) | 🔄 Up next |
+| 1-B | Infrastructure Terraform Skeleton (non-deployed) | ✅ Complete |
+| 1-C | Data Store Terraform Modules | 🔄 Up next |
 
 ---
 
@@ -123,6 +125,10 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/schema/v1/` | Canonical Pydantic v2 schema — read before writing any data layer code |
 | `src/schema/registry.py` | Schema registry for drift detection and JSON Schema export |
 | `tests/schema/test_v1_models.py` | 44-test suite for schema models — run with `PYTHONPATH=src pytest tests/` |
+| `src/infrastructure/terragrunt.hcl` | Terragrunt root — S3 remote state, AWS provider generation |
+| `src/infrastructure/environments/{env}/env.hcl` | Per-environment config (account, region, domain — all PLACEHOLDER until Entry 003 resolved) |
+| `src/infrastructure/modules/` | 9 Terraform modules: vpc, kms, s3, iam, ecr, aurora, elasticache, opensearch, eks |
+| `src/infrastructure/README.md` | IaC deploy instructions, env differences, deploy order |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -138,7 +144,15 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-B:** Infrastructure Terraform skeleton (non-deployed). EKS, VPC, Aurora, Redis, OpenSearch, S3 defined in IaC — not applied to any real AWS account until Entry 003 (account/region/domain) is resolved.
+**Phase 1-C:** Data Store Terraform Modules — Flyway/Alembic migration baseline for Aurora, index definitions for OpenSearch, Redis keyspace strategy document.
+
+**Phase 1-B IaC is ready to apply once Entry 003 is resolved:**
+```bash
+# Fill in environments/dev/env.hcl (aws_account, aws_region, domain)
+make infra-init ENV=dev
+make infra-plan ENV=dev
+make infra-apply ENV=dev
+```
 
 **Parallel actions still open:**
 1. Engage FSMB DocInfo for enterprise API pricing
@@ -154,4 +168,9 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 cd medpro-review
 PYTHONPATH=src pytest tests/schema/ -v
 # Expected: 44 passed
+```
+
+**To validate IaC (requires terraform CLI):**
+```bash
+make infra-validate
 ```

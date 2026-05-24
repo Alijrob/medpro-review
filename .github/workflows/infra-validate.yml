@@ -1,0 +1,70 @@
+name: Infrastructure Validate
+
+on:
+  push:
+    paths:
+      - "src/infrastructure/**"
+  pull_request:
+    paths:
+      - "src/infrastructure/**"
+
+jobs:
+  terraform-fmt:
+    name: Terraform Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.5"
+
+      - name: Check formatting
+        run: |
+          find src/infrastructure/modules -name "*.tf" | \
+            xargs terraform fmt -check -diff
+
+  terraform-validate:
+    name: Terraform Validate Modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module:
+          - vpc
+          - kms
+          - s3
+          - iam
+          - ecr
+          - aurora
+          - elasticache
+          - opensearch
+          - eks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.5"
+
+      - name: Terraform init (no backend)
+        working-directory: src/infrastructure/modules/${{ matrix.module }}
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        working-directory: src/infrastructure/modules/${{ matrix.module }}
+        run: terraform validate
+
+  placeholder-guard:
+    name: Placeholder Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure no PLACEHOLDER values are committed to production
+        run: |
+          if grep -r "PLACEHOLDER" src/infrastructure/environments/production/; then
+            echo "ERROR: PLACEHOLDER values found in production environment config."
+            echo "Resolve DECISIONS.md Entry 003 before merging."
+            exit 1
+          fi
+          echo "No PLACEHOLDER values in production config."
