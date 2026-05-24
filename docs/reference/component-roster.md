@@ -3,10 +3,10 @@
 | Component | Purpose | Key Dependencies | Effort |
 |-----------|---------|-----------------|--------|
 | **C1** — Legal & Compliance Workstream | FCRA determination, ToS matrix, data licensing posture, compliance architecture spec | Product Spec, Source Inventory | 16 wk (blocking) |
-| **C2** — Policy Engine (OPA) | Enforces all authorization and compliance policies (FCRA rules, data redaction, permissible use) | C1, C3, C6 | 9 wk |
+| **C2** — Policy Engine (OPA) | Enforces authorization and data governance policies (API authz, rate limiting, privacy redaction, data access rules). FCRA permissible-purpose policies removed (Path B). See DECISIONS.md Entry 007. | C1, C3, C6 | 7 wk |
 | **C3** — Infrastructure Foundation | EKS, VPC, IAM, KMS, network segmentation, GitOps | Business Requirements | 8 wk |
 | **C4** — Observability Stack | OpenTelemetry -> Prometheus, Loki, Tempo, Grafana, Sentry | C3 | 7 wk |
-| **C5** — Core Data Stores | Aurora PostgreSQL, Redis, OpenSearch, S3, QLDB operational setup | C3, C23 | 8 wk |
+| **C5** — Core Data Stores | Aurora PostgreSQL, Redis, OpenSearch, S3, append-only audit tables (QLDB removed — see DECISIONS.md Entry 005) | C3 | 8 wk |
 | **C6** — Canonical Schema & Registry | Pydantic models, JSON Schema, schema versioning, schema registry | Domain Modeling, C1 | 8 wk |
 | **C7** — Auth & Identity Service | Auth0/Okta integration, JWT handling, RBAC, user data privacy controls | C3, C5, C8 | 8 wk |
 | **C8** — API Gateway & FastAPI Backend | REST API, routing, auth middleware, idempotency, WAF, rate limiting | C2, C3, C7 | 9 wk |
@@ -21,10 +21,10 @@
 | **C17** — Report Generation Service | HTML, PDF (WeasyPrint), JSON reports; compliance disclaimers | C2, C5, C13, C16 | 11 wk |
 | **C18** — Payment Service (Stripe) | Checkout, subscriptions, entitlements, refunds, customer portal | C3, C7, C8 | 8 wk |
 | **C19** — Frontend Application | Next.js: search, report viewer, account mgmt, dispute initiation | C8, C18 | 18 wk |
-| **C20** — Dispute Workflow Service | Dispute lifecycle; FCRA 30-day SLA; HitL; full audit trail | C2, C5, C7, C13, C15, C17, C22, C23 | 12 wk |
+| **C20** — Dispute Workflow Service | Data correction pipeline; HitL review; internal 30-day SLA target; full audit trail. FCRA § 1681i obligations removed (Path B). See DECISIONS.md Entry 007. | C2, C5, C7, C13, C15, C17, C22 | 10 wk |
 | **C21** — Admin Dashboard | Internal UI: source health, disputes, reports, users | C7, C8, C16, C20, C24, C25 | 14 wk |
 | **C22** — Notifications Service | Multi-channel: email, SMS, webhooks, system alerts | C5, C7, C15 | 7 wk |
-| **C23** — Audit Ledger Service (QLDB) | Immutable, verifiable audit ledger; QLDB Streams to S3 | C3, C5 | 7 wk |
+| **C23** — ~~Adverse Action Notice Service~~ **REMOVED** | Removed (Path B — FCRA § 1681m not applicable). See DECISIONS.md Entry 006. Post-MVP optional replacement: physician profile-change alerts, scoped as a product feature. | — | — |
 | **C24** — Source Health Monitor | Continuous monitoring: API availability, latency, schema drift detection, alerts | C4, C9 | 10 wk |
 | **C25** — Data Quality Service | Completeness, validity, contradiction detection, confidence scoring | C2, C5, C6, C13 | 12 wk |
 | **C26** — Security Hardening & Pen Testing | Ongoing security assessments, threat modeling, external pen testing, SAST/DAST | All components | Throughout all phases |
@@ -34,7 +34,7 @@
 ## Phase-to-Component Mapping
 
 ### Phase 1 — Foundations
-C3, C4, C6, C2 (baseline), C23, C7, C8, C9, C26 (baseline)
+C3, C4, C6, C2 (baseline), **C5-audit** (append-only Aurora audit tables, replaces C23/QLDB), C7, C8, C9, C26 (baseline)
 
 ### Phase 2 — Core Identity & MVP
 C10 (initial: NPPES, OIG, SAM.gov, 3-5 state boards), C11 (MVP), C12 (MVP), C13 (basic), C14, C18 (MVP), C19 (Phase 1), C15 (basic), C17 (basic)
@@ -43,7 +43,7 @@ C10 (initial: NPPES, OIG, SAM.gov, 3-5 state boards), C11 (MVP), C12 (MVP), C13 
 C10 (broader: state boards, courts, commercial, reviews, insurance, academic), C12 (upgrade with ML), C25 (Phase 1), C24 (Phase 2)
 
 ### Phase 4 — Orchestration & Intelligence
-C15 (full), C16, C25 (Phase 2), C2 (Phase 2 - FCRA policies), C23 (Phase 2 - QLDB Streams)
+C15 (full), C16, C25 (Phase 2), C2 (Phase 2 - data governance policies; FCRA scope removed)
 
 ### Phase 5 — Productization & Operations
 C19 (full), C17 (full - WeasyPrint PDF), C20, C21, C22, C18 (full)
