@@ -1,0 +1,47 @@
+# =============================================================================
+# root-app.yaml — the app-of-apps root Application
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+#
+# This single Application is the only thing applied by hand after ArgoCD is
+# installed. It watches src/gitops/argocd/apps/ and renders every child
+# Application found there. Each child carries its own argocd.argoproj.io/sync-wave
+# annotation, so ArgoCD applies them in dependency order (see README).
+#
+# Multi-environment: this manifest targets the in-cluster dev environment. Staging
+# and production each get their own copy pointing at their own destination cluster
+# (and, once Entry 003 resolves, their own env-specific value overrides). The
+# child apps are environment-agnostic in this skeleton; per-env value overlays are
+# layered in Phase 1-F when the services and their env configs exist.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: medpro-platform-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/gitops/argocd/apps
+    directory:
+      recurse: false
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,141 @@
+# =============================================================================
+# PrometheusRule — medpro alerting rules (Phase 1-E wrapper)
+# =============================================================================
+# Status: NON-DEPLOYED. Applied by the `prometheus-rules` ArgoCD Application.
+# CRD:    monitoring.coreos.com/v1 (from kube-prometheus-stack).
+#
+# spec.groups is a verbatim copy of the Phase 1-D source:
+#   src/observability/prometheus/rules/alerting-rules.yaml
+# A parity test (tests/gitops/test_gitops_config.py) fails CI if the two diverge.
+# Do not hand-edit rule logic here — edit the 1-D source, then mirror it.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: medpro-alerting-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # -------------------------------------------------------------------------
+    - name: service_slo
+      rules:
+        - alert: ServiceHighErrorRate
+          expr: service:http_errors:ratio5m > 0.05
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: "{{ $labels.service_name }} 5xx error ratio above 5%"
+            description: "5xx ratio is {{ $value | humanizePercentage }} over 5m (threshold 5%)."
+
+        - alert: ServiceHighLatencyP99
+          expr: service:http_latency_p99:5m > 2
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "{{ $labels.service_name }} p99 latency above 2s"
+            description: "p99 request latency is {{ $value }}s over 5m (threshold 2s)."
+
+        - alert: ServiceInstanceDown
+          expr: up{namespace="medpro"} == 0
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: "{{ $labels.job }} target is down"
+            description: "Prometheus has not scraped {{ $labels.instance }} for 5m."
+
+    # -------------------------------------------------------------------------
+    - name: source_health
+      rules:
+        # The source-health-monitor (C24) exports availability per external source.
+        - alert: DataSourceUnavailable
+          expr: source_health_available == 0
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Data source {{ $labels.source_id }} unavailable"
+            description: "{{ $labels.source_id }} has been unreachable for 15m. Reports depending on it will be partial."
+
+        - alert: DataSourceSchemaDrift
+          expr: increase(source_schema_drift_detected_total[1h]) > 0
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Schema drift detected for {{ $labels.source_id }}"
+            description: "The adapter for {{ $labels.source_id }} saw an unexpected response shape. Normalization may break."
+
+        - alert: DataSourceHighLatency
+          expr: source_fetch_duration_seconds_p95 > 30
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "Data source {{ $labels.source_id }} slow"
+            description: "p95 fetch latency for {{ $labels.source_id }} is {{ $value }}s (threshold 30s)."
+
+    # -------------------------------------------------------------------------
+    - name: audit_ledger
+      rules:
+        # Compliance-critical. The audit chain must stay current and tamper-free.
+        - alert: AuditChainLagHigh
+          expr: audit:chain_checkpoint_lag_seconds:max > 300
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: "Audit chain checkpoint lag above 5 minutes"
+            description: "Newest audit event is {{ $value }}s behind the last verified checkpoint. Investigate the audit-writer."
+
+        - alert: AuditWriteFailures
+          expr: audit:write_failures:rate5m > 0
+          for: 0m
+          labels:
+            severity: page
+          annotations:
+            summary: "Audit event write failures occurring"
+            description: "audit-writer is failing to persist events ({{ $value }}/s). The append-only ledger may be missing records — compliance incident."
+
+        - alert: AuditHashMismatch
+          expr: increase(audit_chain_hash_mismatch_total[10m]) > 0
+          for: 0m
+          labels:
+            severity: page
+          annotations:
+            summary: "Audit chain hash mismatch detected"
+            description: "A SHA-256 chain verification failed. Possible tampering or corruption of the append-only ledger. Escalate immediately."
+
+    # -------------------------------------------------------------------------
+    - name: pipeline
+      rules:
+        - alert: ReportWorkflowSuccessLow
+          expr: pipeline:report_workflow_success:ratio15m < 0.95
+          for: 15m
+          labels:
+            severity: page
+          annotations:
+            summary: "Report generation success ratio below 95%"
+            description: "ReportGenerationWorkflow success is {{ $value | humanizePercentage }} over 15m."
+
+        - alert: ReportDurationP95High
+          expr: pipeline:report_duration_p95:5m > 120
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Report generation p95 above 2 minutes"
+            description: "p95 end-to-end report duration is {{ $value }}s (threshold 120s)."
+
+        - alert: TemporalWorkflowFailures
+          expr: sum(rate(temporal_workflow_failed_total[15m])) > 0.1
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Elevated Temporal workflow failure rate"
+            description: "Workflow failures at {{ $value }}/s over 15m."

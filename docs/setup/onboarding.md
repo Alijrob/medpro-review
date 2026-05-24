@@ -28,12 +28,12 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-D COMPLETE** — Observability stack config shipped (OTel collector, Prometheus rules + ServiceMonitors, Loki, Tempo, Grafana dashboards + datasources, Sentry with PII scrubbing). Non-deployed. Phase 1-E (GitOps + CI/CD Skeleton — ArgoCD) is next.
+**Phase 1-E COMPLETE** — GitOps + CI/CD skeleton shipped: ArgoCD app-of-apps (`src/gitops/`) over the 1-B IaC + 1-D observability config, pinned Helm charts (`charts-lock.yaml`), deploy order as sync waves (0-5), PrometheusRule wrappers with a parity guard, kustomize overlays for the Grafana/OTel ConfigMaps, and a deploy-time PLACEHOLDER guard. Non-deployed. Phase 1-F (Auth Service Shell) is next.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
-**Legal gate still active** — FCRA determination pending. IaC skeletons, schema, data layer, and observability config are safe to build; no running services until gate closes.
-**IaC + observability are non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply` or any ArgoCD sync.
+**Legal gate still active** — FCRA determination pending. IaC skeletons, schema, data layer, observability, and GitOps config are safe to build; no running services until gate closes.
+**IaC + observability + GitOps are non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply` or any ArgoCD sync.
 **Domain locked** — researchyourdoctor.com (DECISIONS.md Entry 008).
-**Open observability sub-item** — Sentry SaaS vs. self-hosted undecided (PII residency); DECISIONS.md Entry 009. Decide before Phase 1-F.
+**Open before Phase 1-F** — Sentry SaaS vs. self-hosted (Entry 009); Auth0 vs. Okta (Entry 002); OTel gateway config-mount wiring (Entry 010).
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
@@ -47,7 +47,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-B | Infrastructure Terraform Skeleton (non-deployed) | ✅ Complete |
 | 1-C | Data Store Baseline (migrations, OpenSearch, Redis, docker-compose) | ✅ Complete |
 | 1-D | Observability Stack Config (OTel, Prometheus, Loki, Tempo, Grafana, Sentry) | ✅ Complete |
-| 1-E | GitOps + CI/CD Skeleton (ArgoCD) | 🔄 Up next |
+| 1-E | GitOps + CI/CD Skeleton (ArgoCD app-of-apps, sync waves, pinned charts) | ✅ Complete |
+| 1-F | Auth Service Shell | 🔄 Up next |
 
 ---
 
@@ -146,6 +147,13 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/observability/grafana/dashboards/` | Pipeline SLO, Source Health, Audit Ledger dashboards (JSON) |
 | `src/observability/sentry/sentry_config.py` | Shared Sentry init — mandatory PII scrubbing, DSN from env |
 | `tests/observability/test_observability_config.py` | 39-test suite — run with `make obs-validate` |
+| `src/gitops/README.md` | **GitOps quick-reference** — app-of-apps, sync waves, pinned charts, deploy steps |
+| `src/gitops/charts-lock.yaml` | Pinned Helm chart versions — single source of truth for every ArgoCD app |
+| `src/gitops/argocd/bootstrap/root-app.yaml` | The app-of-apps root Application (apply after ArgoCD install) |
+| `src/gitops/argocd/apps/` | One child Application per platform component, sync-waved |
+| `src/gitops/argocd/monitoring/` | PrometheusRule CRD wrappers (parity-tested against 1-D rules) |
+| `scripts/gitops-guard.sh` | Deploy-time PLACEHOLDER guard — blocks ArgoCD sync until Entry 003 |
+| `tests/gitops/test_gitops_config.py` | 138-test suite — run with `make gitops-validate` |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -162,7 +170,17 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-E:** GitOps + CI/CD Skeleton — ArgoCD Application manifests that point at the Phase 1-B IaC and Phase 1-D observability config (with pinned Helm chart versions), the app-of-apps pattern, the deploy order encoded as sync waves, and the deploy-time PLACEHOLDER guard. Non-deployed until Entry 003 resolves.
+**Phase 1-F:** Auth Service Shell — the first application service (FastAPI auth overlay on Auth0/Okta). Blocked on DECISIONS.md Entry 002 (Auth0 vs. Okta) and Entry 009 (Sentry hosting), both of which must be locked before this phase. Will be the first child Application added to the GitOps app-of-apps in a workload-scoped AppProject.
+
+**Phase 1-E GitOps config validates locally (no cluster needed):**
+```bash
+make gitops-validate
+# Expected: 138 passed
+
+# The two kustomize overlays render their ConfigMaps:
+kustomize build src/observability/grafana
+kustomize build src/observability/otel-collector
+```
 
 **Phase 1-D observability config validates locally (no cluster needed):**
 ```bash

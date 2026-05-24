@@ -1,0 +1,41 @@
+# =============================================================================
+# Application: service-monitors   (sync-wave 3)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Applies the Phase 1-D ServiceMonitor CR(s) (monitoring.coreos.com/v1) that tell
+# Prometheus which service endpoints to scrape. Requires the CRD installed by
+# kube-prometheus-stack (wave 2), hence wave 3.
+# directory.include selects only servicemonitors.yaml from src/observability/
+# prometheus/ (the prometheus-values.yaml in that dir is Helm values, not a
+# manifest, and must not be applied).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: service-monitors
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/observability/prometheus
+    directory:
+      include: "servicemonitors.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

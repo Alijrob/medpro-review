@@ -1,0 +1,61 @@
+# =============================================================================
+# Helm values — argo-cd (the GitOps engine itself)
+# =============================================================================
+# Chart:   argo-cd (argoproj/argo-helm) — version pinned in charts-lock.yaml.
+# Status:  NON-DEPLOYED. Installed once during bootstrap onto the EKS cluster
+#          provisioned by the Phase 1-B IaC. After install, ArgoCD manages
+#          everything else (including itself) via the app-of-apps root.
+#
+# Bootstrap (once Entry 003 is resolved and the cluster exists):
+#   kubectl apply -f src/gitops/argocd/bootstrap/namespace.yaml
+#   helm repo add argo https://argoproj.github.io/argo-helm
+#   helm install argocd argo/argo-cd -n argocd --version <charts-lock> \
+#     -f src/gitops/argocd/bootstrap/install-values.yaml
+#   kubectl apply -f src/gitops/argocd/projects/platform.yaml
+#   kubectl apply -f src/gitops/argocd/bootstrap/root-app.yaml
+# =============================================================================
+
+global:
+  # Run the control plane on the tainted system node group (same as the
+  # observability backends).
+  nodeSelector:
+    role: system
+  tolerations:
+    - key: role
+      operator: Equal
+      value: system
+      effect: NoSchedule
+
+# HA: redundant control-plane components. Redis HA is enabled for staging/prod;
+# dev can override this to false.
+redis-ha:
+  enabled: true
+
+controller:
+  replicas: 1
+
+server:
+  replicas: 2
+  # TLS is terminated at the ingress/ALB (wired in Phase 1-F with the auth
+  # provider). Run the API server with --insecure behind that boundary.
+  extraArgs:
+    - --insecure
+  ingress:
+    enabled: false # ALB + DNS (argocd.researchyourdoctor.com) wired in Phase 1-F
+
+repoServer:
+  replicas: 2
+
+applicationSet:
+  replicas: 2
+
+# Sane defaults for a config-only platform repo. All kustomize overlays in this
+# repo reference files within their own application path, so the default
+# load-restrictor (RootOnly) is kept — no relaxation needed.
+configs:
+  cm:
+    # The git repo is public; no credentials needed for read. Private repos would
+    # add a repository credential via External Secrets in Phase 1-F.
+    timeout.reconciliation: 180s
+  params:
+    server.insecure: true

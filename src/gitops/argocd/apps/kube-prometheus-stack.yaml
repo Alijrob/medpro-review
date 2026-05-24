@@ -1,0 +1,51 @@
+# =============================================================================
+# Application: kube-prometheus-stack   (sync-wave 2)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Installs the Prometheus Operator, Prometheus, and Alertmanager and — critically
+# — the monitoring.coreos.com CRDs (ServiceMonitor, PrometheusRule) that wave-3
+# apps depend on. Bundled Grafana is disabled in the values; Grafana runs from its
+# own chart (wave 5).
+#
+# Multi-source: the chart comes from the upstream Helm repo (pinned), the values
+# come from the medpro-review repo (Phase 1-D), referenced via the $values ref.
+# Chart version: see charts-lock.yaml (kube-prometheus-stack).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 65.5.0
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/src/observability/prometheus/prometheus-values.yaml
+    - repoURL: https://github.com/Alijrob/medpro-review.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # large CRDs exceed the client-side apply annotation limit
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

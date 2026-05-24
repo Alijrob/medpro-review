@@ -1,0 +1,40 @@
+# =============================================================================
+# kustomization.yaml — Grafana provisioning ConfigMaps (Phase 1-E)
+# =============================================================================
+# Status: NON-DEPLOYED. Consumed by the `grafana-config` ArgoCD Application.
+#
+# Turns the Phase 1-D datasource + dashboard files (in THIS directory) into the
+# labeled ConfigMaps the Grafana sidecar auto-discovers:
+#   grafana_datasource=1  -> provisioned as a datasource
+#   grafana_dashboard=1   -> provisioned as a dashboard (folder: medpro-review)
+#
+# kustomize reads only the files listed below; grafana-values.yaml (Helm values,
+# not a manifest) is intentionally not referenced. All paths are within this
+# directory, so ArgoCD's default kustomize load-restrictor (RootOnly) is honored.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: observability
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: medpro-grafana-datasources
+    options:
+      labels:
+        grafana_datasource: "1"
+    files:
+      - datasources.yaml
+
+  - name: medpro-grafana-dashboards
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: medpro-review
+    files:
+      - dashboards/provider-pipeline-slo.json
+      - dashboards/source-health.json
+      - dashboards/audit-ledger.json

@@ -1,0 +1,49 @@
+# =============================================================================
+# Application: grafana   (sync-wave 5)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Grafana from its own chart (bundled kube-prometheus-stack Grafana is disabled).
+# Datasources + dashboards are provisioned via the sidecar from the ConfigMaps
+# created by grafana-config (wave 4). Admin password comes from the grafana-admin
+# Secret created by external-secrets-config (wave 1). Last in the deploy order so
+# every dependency (Prometheus, Loki, Tempo, datasource/dashboard ConfigMaps,
+# admin secret) is already present.
+# Chart version: see charts-lock.yaml (grafana).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: grafana
+      targetRevision: 8.5.8
+      helm:
+        releaseName: grafana
+        valueFiles:
+          - $values/src/observability/grafana/grafana-values.yaml
+    - repoURL: https://github.com/Alijrob/medpro-review.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

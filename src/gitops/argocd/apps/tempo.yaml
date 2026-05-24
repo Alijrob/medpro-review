@@ -1,0 +1,46 @@
+# =============================================================================
+# Application: tempo   (sync-wave 3)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Distributed tracing backend (S3-backed, IRSA). Receives traces from the OTel
+# collector and remote_writes span metrics to Prometheus. Depends on
+# kube-prometheus-stack (wave 2). S3 bucket + region PLACEHOLDER until Entry 003.
+# Chart version: see charts-lock.yaml (tempo-distributed).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: tempo-distributed
+      targetRevision: 1.22.0
+      helm:
+        releaseName: tempo
+        valueFiles:
+          - $values/src/observability/tempo/tempo-values.yaml
+    - repoURL: https://github.com/Alijrob/medpro-review.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

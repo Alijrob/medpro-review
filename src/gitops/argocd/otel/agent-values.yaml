@@ -1,0 +1,85 @@
+# =============================================================================
+# Helm values — opentelemetry-collector (AGENT / DaemonSet)
+# =============================================================================
+# Phase: 1-E artifact. Status: NON-DEPLOYED.
+# Chart:  open-telemetry/opentelemetry-collector (version pinned in the
+#         otel-collector-agent Application / charts-lock.yaml).
+#
+# The Phase 1-D values.yaml holds the GATEWAY values; the 1-D comment notes the
+# agent uses "a trimmed variant that only forwards OTLP to the gateway." This file
+# is that trimmed variant: one collector per node that tails container logs and
+# receives OTLP from pods on the same node, then forwards everything to the
+# gateway Service. No backend exporters and no PII processor here — scrubbing and
+# fan-out happen once, at the gateway.
+# =============================================================================
+
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  # tag pinned by the chart version
+
+# IRSA service account (same observability role as the gateway). The agent needs
+# no AWS access itself, but shares the namespace SA for consistency.
+serviceAccount:
+  create: false
+  name: observability
+
+# Agent runs on every node, including tainted ones, so it can collect from all
+# pods. Tolerate everything.
+tolerations:
+  - operator: Exists
+
+# Let the chart wire the standard node-level collection presets.
+presets:
+  logsCollection:
+    enabled: true
+    includeCollectorLogs: false
+  kubernetesAttributes:
+    enabled: true
+  hostMetrics:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Forward-only pipeline: receive OTLP locally, batch, ship to the gateway over
+# OTLP/gRPC. The gateway Service name follows the otel-gateway release name.
+config:
+  exporters:
+    otlp:
+      endpoint: otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4317
+      tls:
+        insecure: true # in-cluster traffic; mTLS via the service mesh in a later phase
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch: {}
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp]

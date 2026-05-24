@@ -1,0 +1,46 @@
+# =============================================================================
+# Application: loki   (sync-wave 3)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Log aggregation backend (S3-backed, IRSA). Receives logs from the OTel
+# collector. Depends on kube-prometheus-stack (wave 2) for the ServiceMonitor CRD
+# used by its metrics. S3 bucket + region are PLACEHOLDER until Entry 003.
+# Chart version: see charts-lock.yaml (loki).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: 6.18.0
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/src/observability/loki/loki-values.yaml
+    - repoURL: https://github.com/Alijrob/medpro-review.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

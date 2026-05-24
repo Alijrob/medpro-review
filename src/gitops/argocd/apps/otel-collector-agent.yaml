@@ -1,0 +1,46 @@
+# =============================================================================
+# Application: otel-collector-agent   (sync-wave 4)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# The per-node OTLP agent (mode: daemonset). Forwards to the gateway. Uses the
+# Phase 1-E agent values (src/gitops/argocd/otel/agent-values.yaml), since 1-D
+# only shipped gateway values.
+# Chart version: see charts-lock.yaml (opentelemetry-collector).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector-agent
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: 0.108.0
+      helm:
+        releaseName: otel-agent
+        valueFiles:
+          - $values/src/gitops/argocd/otel/agent-values.yaml
+    - repoURL: https://github.com/Alijrob/medpro-review.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

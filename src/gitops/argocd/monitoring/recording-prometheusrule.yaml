@@ -1,0 +1,72 @@
+# =============================================================================
+# PrometheusRule — medpro recording rules (Phase 1-E wrapper)
+# =============================================================================
+# Status: NON-DEPLOYED. Applied by the `prometheus-rules` ArgoCD Application.
+# CRD:    monitoring.coreos.com/v1 (from kube-prometheus-stack).
+#
+# spec.groups is a verbatim copy of the Phase 1-D source:
+#   src/observability/prometheus/rules/recording-rules.yaml
+# A parity test (tests/gitops/test_gitops_config.py) fails CI if the two diverge.
+# Do not hand-edit rule logic here — edit the 1-D source, then mirror it.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: medpro-recording-rules
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: medpro_service_sli
+      interval: 30s
+      rules:
+        # Per-service request rate (req/s), 5m window.
+        - record: service:http_requests:rate5m
+          expr: sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+
+        # Per-service error rate (fraction of 5xx), 5m window.
+        - record: service:http_errors:ratio5m
+          expr: |
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count[5m])), 1)
+
+        # Per-service p99 latency (seconds), 5m window.
+        - record: service:http_latency_p99:5m
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket[5m]))
+            )
+
+    - name: medpro_pipeline_sli
+      interval: 30s
+      rules:
+        # Report generation success ratio (Temporal workflow), 15m window.
+        - record: pipeline:report_workflow_success:ratio15m
+          expr: |
+            sum(rate(temporal_workflow_completed_total{workflow_type="ReportGenerationWorkflow"}[15m]))
+            /
+            clamp_min(sum(rate(temporal_workflow_started_total{workflow_type="ReportGenerationWorkflow"}[15m])), 1)
+
+        # Report generation p95 end-to-end duration (seconds).
+        - record: pipeline:report_duration_p95:5m
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(report_generation_duration_seconds_bucket[5m]))
+            )
+
+    - name: medpro_audit_sli
+      interval: 30s
+      rules:
+        # Audit chain lag: seconds between the newest audit event and its inclusion
+        # in a verified chain checkpoint. The audit-writer service exports this.
+        - record: audit:chain_checkpoint_lag_seconds:max
+          expr: max(audit_chain_checkpoint_lag_seconds)
+
+        # Audit write failure rate (5m). Any sustained nonzero value is a compliance
+        # incident.
+        - record: audit:write_failures:rate5m
+          expr: sum(rate(audit_event_write_failures_total[5m]))

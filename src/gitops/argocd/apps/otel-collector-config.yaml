@@ -1,0 +1,40 @@
+# =============================================================================
+# Application: otel-collector-config   (sync-wave 3)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Renders the gateway pipeline (src/observability/otel-collector/
+# collector-config.yaml) into a ConfigMap named `otel-gateway-pipeline` via a
+# kustomize configMapGenerator (kustomization.yaml lives alongside the config, so
+# kustomize stays within its own root — no load-restrictor relaxation). The
+# gateway Deployment (wave 4) mounts this ConfigMap. Kept as the single source of
+# the pipeline so there is no duplication between the 1-D config and the deployed
+# ConfigMap.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/observability/otel-collector
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

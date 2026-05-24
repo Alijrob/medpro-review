@@ -1,0 +1,51 @@
+# =============================================================================
+# platform AppProject
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+#
+# Scopes what the platform app-of-apps is allowed to deploy. Every child
+# Application sets `project: platform`. This is an infrastructure/platform project
+# (observability backends, External Secrets Operator, GitOps engine), so it is
+# trusted to manage cluster-scoped resources (CRDs, namespaces, ClusterRoles for
+# the Prometheus Operator and ESO). Application workloads (Phase 1-F+) will live
+# in a separate, more tightly scoped project.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: medpro-review platform infrastructure (observability, secrets, GitOps)
+
+  # Source repos: the medpro-review git repo + the pinned upstream chart repos
+  # (see charts-lock.yaml). Listed explicitly rather than "*" so a new chart
+  # source is a deliberate change.
+  sourceRepos:
+    - https://github.com/Alijrob/medpro-review.git
+    - https://argoproj.github.io/argo-helm
+    - https://charts.external-secrets.io
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://open-telemetry.github.io/opentelemetry-helm-charts
+
+  # Only the in-cluster API server, and only the platform namespaces.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: observability
+    - server: https://kubernetes.default.svc
+      namespace: external-secrets
+
+  # Platform project manages cluster-scoped resources (CRDs, Namespaces,
+  # ClusterRoles installed by the Prometheus Operator and ESO charts).
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

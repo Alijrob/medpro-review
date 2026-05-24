@@ -1,0 +1,57 @@
+name: GitOps Validate
+
+on:
+  push:
+    paths:
+      - "src/gitops/**"
+      - "src/observability/**"
+      - "tests/gitops/**"
+  pull_request:
+    paths:
+      - "src/gitops/**"
+      - "src/observability/**"
+      - "tests/gitops/**"
+
+jobs:
+  config-validate:
+    name: Validate GitOps Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: pip install pytest pyyaml
+
+      # Structural checks: Applications parse, point at pinned charts in
+      # charts-lock.yaml, valueFile paths exist, sync waves are ordered, and the
+      # PrometheusRule wrappers match the Phase 1-D source (parity). No cluster.
+      #
+      # NOTE: PLACEHOLDER values (S3 buckets, region, Secrets Manager paths) are
+      # EXPECTED in this non-deployed phase. The placeholder guard
+      # (scripts/gitops-guard.sh) is a DEPLOY-TIME gate, not a CI gate, so it is
+      # not run here — it would (correctly) fail until DECISIONS.md Entry 003.
+      - name: Run GitOps config tests
+        run: PYTHONPATH=src pytest tests/gitops/ -v
+
+  kustomize-build:
+    name: Kustomize Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      # Both overlays reference only files within their own root, so the default
+      # RootOnly load restrictor (matching ArgoCD's default) must succeed.
+      - name: Build Grafana provisioning ConfigMaps
+        run: kustomize build src/observability/grafana
+
+      - name: Build OTel gateway pipeline ConfigMap
+        run: kustomize build src/observability/otel-collector

@@ -1,0 +1,13 @@
+# =============================================================================
+# argocd namespace
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Created once during bootstrap, before the ArgoCD Helm release is installed.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/part-of: medpro-review
+    pod-security.kubernetes.io/enforce: baseline

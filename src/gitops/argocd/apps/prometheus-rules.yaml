@@ -1,0 +1,43 @@
+# =============================================================================
+# Application: prometheus-rules   (sync-wave 3)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Applies the PrometheusRule CRDs (recording + alerting). The Phase 1-D rule files
+# (src/observability/prometheus/rules/*.yaml) are raw Prometheus rule groups, not
+# CRDs, so Phase 1-E wraps them in monitoring.coreos.com/v1 PrometheusRule objects
+# under src/gitops/argocd/monitoring/. A parity test
+# (tests/gitops/test_gitops_config.py) asserts the wrapped rules stay identical to
+# the 1-D source — drift fails CI. Requires the CRD from kube-prometheus-stack
+# (wave 2), hence wave 3.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-rules
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/gitops/argocd/monitoring
+    directory:
+      recurse: false
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,55 @@
+# =============================================================================
+# charts-lock.yaml — pinned Helm chart versions (Phase 1-E single source of truth)
+# =============================================================================
+# Every ArgoCD Application in src/gitops/argocd/apps/ that pulls an upstream Helm
+# chart MUST use the repoURL + chart + version recorded here. The Phase 1-E test
+# suite (tests/gitops/test_gitops_config.py) cross-checks each Application against
+# this file, so a version bump is a one-line change here plus the Application.
+#
+# Versions are pinned to a known-good set as of 2026-05-24. They are NOT verified
+# against a live cluster (none exists — DECISIONS.md Entry 003). RE-VERIFY each
+# version against its upstream repo and run a `helm template` dry-run before the
+# first deploy.
+# =============================================================================
+
+charts:
+  argo-cd:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    version: 7.7.5
+
+  external-secrets:
+    repoURL: https://charts.external-secrets.io
+    chart: external-secrets
+    version: 0.10.4
+
+  kube-prometheus-stack:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    version: 65.5.0
+
+  loki:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki
+    version: 6.18.0
+
+  tempo-distributed:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: tempo-distributed
+    version: 1.22.0
+
+  grafana:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    version: 8.5.8
+
+  opentelemetry-collector:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    version: 0.108.0
+
+# The medpro-review git repo is the source for all in-repo config (Helm value
+# files, raw manifests, kustomize overlays). Referenced by every Application.
+gitSource:
+  repoURL: https://github.com/Alijrob/medpro-review.git
+  targetRevision: main

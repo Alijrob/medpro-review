@@ -1,0 +1,26 @@
+# =============================================================================
+# kustomization.yaml — OTel gateway pipeline ConfigMap (Phase 1-E)
+# =============================================================================
+# Status: NON-DEPLOYED. Consumed by the `otel-collector-config` ArgoCD Application.
+#
+# Renders the Phase 1-D gateway pipeline (collector-config.yaml, in THIS
+# directory) into a ConfigMap named `otel-gateway-pipeline`. The gateway
+# Deployment mounts this ConfigMap (see otel-collector-gateway app). Keeping the
+# pipeline here as the single source avoids duplicating it into Helm values.
+#
+# kustomize reads only collector-config.yaml; values.yaml (Helm values, not a
+# manifest) is intentionally not referenced. disableNameSuffixHash keeps the
+# ConfigMap name stable so the gateway can mount it by name.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: observability
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: otel-gateway-pipeline
+    files:
+      - collector-config.yaml

@@ -3,6 +3,7 @@
 .PHONY: dev-setup run-backend run-frontend lint test \
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
+        gitops-validate gitops-guard \
         help
 
 ENV ?= dev
@@ -23,6 +24,9 @@ help:
 	@echo "  infra-apply ENV=dev  terragrunt run-all apply for ENV (requires approval)"
 	@echo ""
 	@echo "  obs-validate         Validate observability configs (Phase 1-D, no cluster needed)"
+	@echo ""
+	@echo "  gitops-validate      Validate ArgoCD app-of-apps configs (Phase 1-E, no cluster needed)"
+	@echo "  gitops-guard         Deploy-time PLACEHOLDER guard — blocks ArgoCD sync until Entry 003"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -88,3 +92,11 @@ obs-validate:
 	@echo "Validating observability configs (Phase 1-D)..."
 	PYTHONPATH=src poetry run pytest tests/observability/ -v 2>/dev/null || \
 		PYTHONPATH=src pytest tests/observability/ -v
+
+gitops-validate:
+	@echo "Validating GitOps / ArgoCD configs (Phase 1-E)..."
+	PYTHONPATH=src poetry run pytest tests/gitops/ -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/gitops/ -v
+
+gitops-guard:
+	@bash scripts/gitops-guard.sh

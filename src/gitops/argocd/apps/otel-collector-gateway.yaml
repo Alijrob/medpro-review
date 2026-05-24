@@ -1,0 +1,53 @@
+# =============================================================================
+# Application: otel-collector-gateway   (sync-wave 4)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# The OTLP gateway (mode: deployment). All 12 services and the per-node agents
+# push OTLP here; it fans out to Tempo / Prometheus / Loki and scrubs PII. Uses
+# the Phase 1-D gateway values.
+#
+# OPEN WIRING (finalized at deploy, see README "Collector config injection"):
+# the gateway must mount the `otel-gateway-pipeline` ConfigMap produced by the
+# otel-collector-config app (wave 3) and run with --config pointing at it. The
+# exact chart keys (configMap.create / extraVolumes / command) are pinned against
+# the live chart version before first deploy; left out here to avoid committing an
+# unverified chart binding.
+# Chart version: see charts-lock.yaml (opentelemetry-collector).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: 0.108.0
+      helm:
+        releaseName: otel-gateway
+        valueFiles:
+          - $values/src/observability/otel-collector/values.yaml
+    - repoURL: https://github.com/Alijrob/medpro-review.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

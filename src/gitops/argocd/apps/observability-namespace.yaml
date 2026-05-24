@@ -1,0 +1,39 @@
+# =============================================================================
+# Application: observability-namespace   (sync-wave 0)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Applies the observability namespace (with its pod-security label) from the
+# Phase 1-D config. Kept separate from external-secrets-config (wave 1) so the
+# namespace exists before the SecretStore/ExternalSecret CRs land in it.
+# directory.include selects only namespace.yaml from src/observability/k8s/.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-namespace
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/observability/k8s
+    directory:
+      include: "namespace.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

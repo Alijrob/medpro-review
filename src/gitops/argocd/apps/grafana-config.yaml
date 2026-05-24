@@ -1,0 +1,40 @@
+# =============================================================================
+# Application: grafana-config   (sync-wave 4)
+# =============================================================================
+# Phase: 1-E. Status: NON-DEPLOYED.
+# Generates the labeled ConfigMaps the Grafana sidecar discovers:
+#   - grafana_datasource: the Prometheus/Loki/Tempo datasources (datasources.yaml)
+#   - grafana_dashboard:  the three Phase 1-D dashboards (dashboards/*.json)
+# A kustomize configMapGenerator (kustomization.yaml in src/observability/grafana/)
+# reads the real 1-D files in place, so there is zero duplication. Lands at wave 4
+# so the ConfigMaps exist before Grafana starts (wave 5); the sidecar would also
+# hot-reload them, but ordering avoids an empty first boot.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/observability/grafana
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
