@@ -27,18 +27,20 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 0-E COMPLETE** — Data licensing cost model written and committed.
-**Phase 0 documentation is complete. Legal gate is BLOCKING all engineering code.**
+**Phase 1-A COMPLETE** — Canonical Schema v1 shipped. Phase 1-B (Terraform skeleton) is next.
+**Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
+**Legal gate still active** — FCRA determination pending. IaC skeletons and schema are safe to build; no running services until gate closes.
 
-No backend, frontend, or infrastructure code may be written until the FCRA determination is in hand from legal counsel. Only documentation, IaC skeletons (non-deployed), and schema design files are safe to produce during Phase 0.
-
-| Sub-Phase | Deliverable | Status |
-|-----------|-------------|--------|
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
 | 0-A | Repo + docs bootstrap | ✅ Complete |
 | 0-B | FCRA architectural blueprints | ✅ Complete |
 | 0-C | ToS analysis matrix (80 sources) | ✅ Complete |
 | 0-D | Source priority matrix (P1/P2/P3 tiers, Phase 2 build sequence) | ✅ Complete |
 | 0-E | Data licensing cost model (unit economics, CRA delta, break-even) | ✅ Complete |
+| **Path B lock** | DECISIONS.md entries 004-007 (non-CRA, QLDB removed, C23 removed, C20/C22/OPA/retention rescoped) | ✅ Complete |
+| 1-A | Canonical Schema v1 — Pydantic models + schema registry | ✅ Complete |
+| 1-B | Infrastructure Terraform Skeleton (non-deployed) | 🔄 Up next |
 
 ---
 
@@ -97,7 +99,7 @@ make run-frontend    # Next.js dev server (src/frontend/)
 | `DATABASE_URL` | Aurora PostgreSQL | Phase 1-B (dev: local Postgres) |
 | `REDIS_URL` | Cache / rate limiting | Phase 1-B (dev: local Redis) |
 | `OPENSEARCH_URL` | Provider search | Phase 1-B |
-| `QLDB_LEDGER_NAME` | Audit ledger | Phase 1-I |
+| `AUDIT_LOG_TABLE` | Aurora append-only audit table name (replaces QLDB — see DECISIONS.md Entry 005) | Phase 1-I |
 | `TEMPORAL_ADDRESS` | Workflow orchestration | Phase 2-H |
 | `AWS_REGION` | AWS services | Phase 1-B |
 | `OPA_URL` | Policy engine sidecar | Phase 1-H |
@@ -117,7 +119,10 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docs/reference/tos-matrix.md` | ToS analysis matrix — 80 sources, risk tiers, legal sign-off status |
 | `docs/reference/source-priority.md` | Source Priority Matrix — P1/P2/P3 ranking, Phase 2 adapter build sequence |
 | `docs/reference/cost-model.md` | Data Licensing Cost Model — unit economics, CRA delta, break-even analysis |
-| `DECISIONS.md` | Log of all deviations from the locked plan |
+| `DECISIONS.md` | Log of all deviations from the locked plan (entries 001-007 current) |
+| `src/schema/v1/` | Canonical Pydantic v2 schema — read before writing any data layer code |
+| `src/schema/registry.py` | Schema registry for drift detection and JSON Schema export |
+| `tests/schema/test_v1_models.py` | 44-test suite for schema models — run with `PYTHONPATH=src pytest tests/` |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -133,15 +138,20 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 0 is complete.** All five Phase 0 documentation deliverables have been committed.
+**Phase 1-B:** Infrastructure Terraform skeleton (non-deployed). EKS, VPC, Aurora, Redis, OpenSearch, S3 defined in IaC — not applied to any real AWS account until Entry 003 (account/region/domain) is resolved.
 
-The next milestone is the legal gate: FCRA determination from counsel. Once the legal gate closes and the FCRA path is locked, Phase 1 (Foundations) can begin with canonical schema design, Terraform skeleton, and auth service shell.
-
-While waiting on the legal gate, high-value parallel actions:
+**Parallel actions still open:**
 1. Engage FSMB DocInfo for enterprise API pricing
 2. Engage ABMS for enterprise subscription pricing
 3. Engage Ribbon Health for pricing tiers
-4. Engage FCRA-specialized counsel using `docs/reference/fcra-blueprints.md` as the brief
-5. Resolve T4 architectural decisions (Healthgrades, Vitals, Doximity)
+4. Engage general counsel for Path B ToS review (not FCRA-specialized — Path B locked)
+5. Resolve T4 architectural decisions (Healthgrades, Vitals, Doximity) — DECISIONS.md Entry 006 context
 6. Lock Auth0 vs. Okta (DECISIONS.md Entry 002)
 7. Lock AWS account, region, and domain (DECISIONS.md Entry 003)
+
+**To run schema tests:**
+```bash
+cd medpro-review
+PYTHONPATH=src pytest tests/schema/ -v
+# Expected: 44 passed
+```
