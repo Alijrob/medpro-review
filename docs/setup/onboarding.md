@@ -27,10 +27,19 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 0-A COMPLETE** — Repo bootstrapped, all reference docs loaded, tracker created.
+**Phase 0-C COMPLETE** — FCRA blueprints and ToS analysis matrix written and committed.
+**Phase 0-D (Source Priority Matrix) is next.**
 **Phase 0 (Legal Gate) is BLOCKING all engineering code.**
 
 No backend, frontend, or infrastructure code may be written until the FCRA determination is in hand from legal counsel. Only documentation, IaC skeletons (non-deployed), and schema design files are safe to produce during Phase 0.
+
+| Sub-Phase | Deliverable | Status |
+|-----------|-------------|--------|
+| 0-A | Repo + docs bootstrap | ✅ Complete |
+| 0-B | FCRA architectural blueprints | ✅ Complete |
+| 0-C | ToS analysis matrix (80 sources) | ✅ Complete |
+| 0-D | Source priority matrix | 🔄 Up next |
+| 0-E | Data licensing cost model | ⏳ Pending |
 
 ---
 
@@ -105,6 +114,8 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docs/reference/architecture-lock.md` | **Read before writing any code** — locked architecture |
 | `docs/reference/component-roster.md` | C1-C26 component reference and phase mapping |
 | `docs/reference/tool-recommendations.md` | Locked stack, libraries, and what to avoid |
+| `docs/reference/fcra-blueprints.md` | CRA vs. non-CRA architectural blueprints for legal counsel |
+| `docs/reference/tos-matrix.md` | ToS analysis matrix — 80 sources, risk tiers, legal sign-off status |
 | `DECISIONS.md` | Log of all deviations from the locked plan |
 | `docs/session-logs/` | Per-session build logs |
 
@@ -121,4 +132,4 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 0-B:** Write the two parallel FCRA architectural blueprint summaries (CRA path vs. non-CRA path) for legal counsel review. Output: `docs/reference/fcra-blueprints.md`.
+**Phase 0-D:** Write the Source Priority Matrix — tier 1/2/3 ranking of all 80 sources by value, integration effort, and risk. Used to sequence Phase 2 adapter builds. Output: `docs/reference/source-priority.md`.
