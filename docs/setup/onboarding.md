@@ -28,10 +28,11 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-B COMPLETE** — Terraform/Terragrunt IaC skeleton shipped. Phase 1-C (Data Store Terraform Modules) is next.
+**Phase 1-C COMPLETE** — Data store baseline shipped (Alembic migrations, OpenSearch index template, Redis keyspace strategy, local dev docker-compose). Phase 1-D (Observability Stack Config) is next.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
 **Legal gate still active** — FCRA determination pending. IaC skeletons and schema are safe to build; no running services until gate closes.
-**IaC is non-deployed** — DECISIONS.md Entry 003 (AWS account/region/domain) must be resolved before `terragrunt apply`.
+**IaC is non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply`.
+**Domain locked** — researchyourdoctor.com (DECISIONS.md Entry 008).
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
@@ -43,7 +44,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | **Path B lock** | DECISIONS.md entries 004-007 (non-CRA, QLDB removed, C23 removed, C20/C22/OPA/retention rescoped) | ✅ Complete |
 | 1-A | Canonical Schema v1 — Pydantic models + schema registry | ✅ Complete |
 | 1-B | Infrastructure Terraform Skeleton (non-deployed) | ✅ Complete |
-| 1-C | Data Store Terraform Modules | 🔄 Up next |
+| 1-C | Data Store Baseline (migrations, OpenSearch, Redis, docker-compose) | ✅ Complete |
+| 1-D | Observability Stack Config (OTel, Prometheus, Grafana, Sentry) | 🔄 Up next |
 
 ---
 
@@ -122,7 +124,7 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docs/reference/tos-matrix.md` | ToS analysis matrix — 80 sources, risk tiers, legal sign-off status |
 | `docs/reference/source-priority.md` | Source Priority Matrix — P1/P2/P3 ranking, Phase 2 adapter build sequence |
 | `docs/reference/cost-model.md` | Data Licensing Cost Model — unit economics, CRA delta, break-even analysis |
-| `DECISIONS.md` | Log of all deviations from the locked plan (entries 001-007 current) |
+| `DECISIONS.md` | Log of all deviations from the locked plan (entries 001-008 current) |
 | `src/schema/v1/` | Canonical Pydantic v2 schema — read before writing any data layer code |
 | `src/schema/registry.py` | Schema registry for drift detection and JSON Schema export |
 | `tests/schema/test_v1_models.py` | 44-test suite for schema models — run with `PYTHONPATH=src pytest tests/` |
@@ -130,6 +132,12 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/infrastructure/environments/{env}/env.hcl` | Per-environment config (account, region, domain — all PLACEHOLDER until Entry 003 resolved) |
 | `src/infrastructure/modules/` | 9 Terraform modules: vpc, kms, s3, iam, ecr, aurora, elasticache, opensearch, eks |
 | `src/infrastructure/README.md` | IaC deploy instructions, env differences, deploy order |
+| `src/data/migrations/versions/` | Alembic migrations 0001-0003 (baseline schema, audit schema, roles/RLS/seeds) |
+| `src/data/opensearch/providers_index_template.json` | OpenSearch index template for `providers-*` pattern |
+| `src/data/redis/keyspace-strategy.md` | Redis key patterns, TTLs, eviction policy — read before adding cache keys |
+| `docker-compose.dev.yml` | Local dev stack: Postgres 15, Redis 7, OpenSearch 2.11 |
+| `scripts/dev-init-postgres.sql` | Creates medpro_audit DB and installs extensions (run once after docker-compose up) |
+| `src/data/README.md` | Data layer quick-reference: how to run migrations, apply OS template, run tests |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -145,7 +153,24 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-C:** Data Store Terraform Modules — Flyway/Alembic migration baseline for Aurora, index definitions for OpenSearch, Redis keyspace strategy document.
+**Phase 1-D:** Observability Stack Config — OpenTelemetry collector config (traces + metrics + logs), Prometheus scrape rules and alerting rules, Grafana dashboard definitions (provider pipeline SLOs, audit chain lag, source health), Sentry DSN wiring per service.
+
+**Phase 1-C data store is operational locally:**
+```bash
+# Start all data stores
+docker compose -f docker-compose.dev.yml up -d
+
+# Run dev-init-postgres.sql once (creates medpro_audit DB + extensions)
+docker exec -i medpro-postgres psql -U medpro_admin -f /scripts/dev-init-postgres.sql
+
+# Apply Alembic migrations
+DATABASE_URL=postgresql+psycopg2://medpro_admin:devpass@localhost:5432/medpro \
+  alembic -c src/data/migrations/alembic.ini upgrade head
+
+# Run data layer unit tests (no DB required)
+PYTHONPATH=src pytest tests/data/ -v -m "not integration"
+# Expected: 20 passed
+```
 
 **Phase 1-B IaC is ready to apply once Entry 003 is resolved:**
 ```bash
