@@ -14,8 +14,7 @@ locals {
   # TODO-Entry-003: Replace with selected region
   aws_region = "PLACEHOLDER-AWS-REGION"
 
-  # TODO-Entry-003: Replace with actual domain
-  domain = "PLACEHOLDER-DOMAIN"
+  domain = "researchyourdoctor.com"
 
   vpc_cidr = "10.1.0.0/16"
 

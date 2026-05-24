@@ -82,4 +82,14 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 008 — Domain: researchyourdoctor.com
+
+**Date:** 2026-05-24
+**Decision:** The public domain for this platform is **researchyourdoctor.com**.
+**Reason:** Clear, patient-first framing. Zero ambiguity about the product's purpose. Chosen by Jay.
+**Impact:** Partial resolution of Entry 003 — domain is now locked. AWS account and region still needed to complete Entry 003.
+**Locked:** Yes.
+
+---
+
 <!-- Add new entries below this line -->

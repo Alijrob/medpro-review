@@ -14,8 +14,7 @@ locals {
   # TODO-Entry-003: Replace with selected region (e.g. "us-east-1")
   aws_region = "PLACEHOLDER-AWS-REGION"
 
-  # TODO-Entry-003: Replace with actual domain (e.g. "medprofessionalsreview.com")
-  domain = "PLACEHOLDER-DOMAIN"
+  domain = "researchyourdoctor.com"
 
   # CIDR blocks for this environment
   vpc_cidr = "10.0.0.0/16"
