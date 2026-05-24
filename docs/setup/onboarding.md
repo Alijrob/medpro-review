@@ -28,11 +28,12 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-C COMPLETE** — Data store baseline shipped (Alembic migrations, OpenSearch index template, Redis keyspace strategy, local dev docker-compose). Phase 1-D (Observability Stack Config) is next.
+**Phase 1-D COMPLETE** — Observability stack config shipped (OTel collector, Prometheus rules + ServiceMonitors, Loki, Tempo, Grafana dashboards + datasources, Sentry with PII scrubbing). Non-deployed. Phase 1-E (GitOps + CI/CD Skeleton — ArgoCD) is next.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
-**Legal gate still active** — FCRA determination pending. IaC skeletons and schema are safe to build; no running services until gate closes.
-**IaC is non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply`.
+**Legal gate still active** — FCRA determination pending. IaC skeletons, schema, data layer, and observability config are safe to build; no running services until gate closes.
+**IaC + observability are non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply` or any ArgoCD sync.
 **Domain locked** — researchyourdoctor.com (DECISIONS.md Entry 008).
+**Open observability sub-item** — Sentry SaaS vs. self-hosted undecided (PII residency); DECISIONS.md Entry 009. Decide before Phase 1-F.
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
@@ -45,7 +46,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-A | Canonical Schema v1 — Pydantic models + schema registry | ✅ Complete |
 | 1-B | Infrastructure Terraform Skeleton (non-deployed) | ✅ Complete |
 | 1-C | Data Store Baseline (migrations, OpenSearch, Redis, docker-compose) | ✅ Complete |
-| 1-D | Observability Stack Config (OTel, Prometheus, Grafana, Sentry) | 🔄 Up next |
+| 1-D | Observability Stack Config (OTel, Prometheus, Loki, Tempo, Grafana, Sentry) | ✅ Complete |
+| 1-E | GitOps + CI/CD Skeleton (ArgoCD) | 🔄 Up next |
 
 ---
 
@@ -124,7 +126,7 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docs/reference/tos-matrix.md` | ToS analysis matrix — 80 sources, risk tiers, legal sign-off status |
 | `docs/reference/source-priority.md` | Source Priority Matrix — P1/P2/P3 ranking, Phase 2 adapter build sequence |
 | `docs/reference/cost-model.md` | Data Licensing Cost Model — unit economics, CRA delta, break-even analysis |
-| `DECISIONS.md` | Log of all deviations from the locked plan (entries 001-008 current) |
+| `DECISIONS.md` | Log of all deviations from the locked plan (entries 001-009 current) |
 | `src/schema/v1/` | Canonical Pydantic v2 schema — read before writing any data layer code |
 | `src/schema/registry.py` | Schema registry for drift detection and JSON Schema export |
 | `tests/schema/test_v1_models.py` | 44-test suite for schema models — run with `PYTHONPATH=src pytest tests/` |
@@ -138,6 +140,12 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `docker-compose.dev.yml` | Local dev stack: Postgres 15, Redis 7, OpenSearch 2.11 |
 | `scripts/dev-init-postgres.sql` | Creates medpro_audit DB and installs extensions (run once after docker-compose up) |
 | `src/data/README.md` | Data layer quick-reference: how to run migrations, apply OS template, run tests |
+| `src/observability/README.md` | Observability quick-reference: signal flow, layout, PII handling, deploy order |
+| `src/observability/otel-collector/collector-config.yaml` | OTel gateway pipeline (OTLP in → Tempo/Prometheus/Loki out, PII scrub) |
+| `src/observability/prometheus/rules/` | Recording + alerting rules (service SLO, source health, audit ledger, pipeline) |
+| `src/observability/grafana/dashboards/` | Pipeline SLO, Source Health, Audit Ledger dashboards (JSON) |
+| `src/observability/sentry/sentry_config.py` | Shared Sentry init — mandatory PII scrubbing, DSN from env |
+| `tests/observability/test_observability_config.py` | 39-test suite — run with `make obs-validate` |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -146,14 +154,21 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 1. **Phase 0 Legal Gate** — FCRA determination is blocking all engineering code. ETA: 16 weeks from legal engagement start.
 2. **Auth0 vs. Okta selection** — Must be locked before Phase 1-F starts. (See DECISIONS.md Entry 002.)
-3. **AWS account / region / domain** — Not yet assigned. Blocks Phase 1-B from being deployable. (See DECISIONS.md Entry 003.)
+3. **AWS account / region** — Not yet assigned. Blocks Phase 1-B (IaC) and Phase 1-D (observability) from being deployable. Domain is locked (researchyourdoctor.com, Entry 008). (See DECISIONS.md Entry 003.)
 4. **Ground truth dataset** — Required for C12 identity resolution >98% precision target. Must be assigned an owner before Phase 2-E.
+5. **Sentry hosting mode** — SaaS vs. self-hosted undecided (PII residency). Decide before Phase 1-F wires Sentry. (See DECISIONS.md Entry 009.)
 
 ---
 
 ## Next Likely Step
 
-**Phase 1-D:** Observability Stack Config — OpenTelemetry collector config (traces + metrics + logs), Prometheus scrape rules and alerting rules, Grafana dashboard definitions (provider pipeline SLOs, audit chain lag, source health), Sentry DSN wiring per service.
+**Phase 1-E:** GitOps + CI/CD Skeleton — ArgoCD Application manifests that point at the Phase 1-B IaC and Phase 1-D observability config (with pinned Helm chart versions), the app-of-apps pattern, the deploy order encoded as sync waves, and the deploy-time PLACEHOLDER guard. Non-deployed until Entry 003 resolves.
+
+**Phase 1-D observability config validates locally (no cluster needed):**
+```bash
+make obs-validate
+# Expected: 39 passed
+```
 
 **Phase 1-C data store is operational locally:**
 ```bash
