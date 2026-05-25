@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -45,6 +45,7 @@ class TestMigrationFiles:
         assert revisions.get("0001") is None, "0001 must have no down_revision"
         assert revisions.get("0002") == "0001", "0002 must reference 0001"
         assert revisions.get("0003") == "0002", "0003 must reference 0002"
+        assert revisions.get("0004") == "0003", "0004 must reference 0003"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()

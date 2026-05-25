@@ -346,3 +346,28 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 **Legal gate:** Built and tested against **stubbed transports only -- no network I/O**. Live ingestion is governed by the Phase 0 FCRA determination (I2 is T1/L0 open-data -- CC0, published on data.cms.gov).
 **Pre-live checklist:** (1) Verify `DEFAULT_DATASET_ID` against `data.cms.gov/provider-data`; (2) verify `_MEDICAID_REQUIRED_FIELDS` field names against live dataset schema; (3) set `expected_min_records` in production config.
 **Locked:** SODA REST_API mode, single dataset, single pass, 5-field contract, configurable `dataset_id`, standard base-class contract path.
+
+---
+
+## Entry 024 -- Source Health Monitor Design (Phase 2-C)
+
+**Date:** 2026-05-25
+**Decision:** Source Health Monitor (C24) ships as a FastAPI shell service (`src/backend/source_health_monitor/`) following the established Phase 1 service pattern (auth_service, api_gateway, audit_service). Key design choices:
+
+- **FastAPI service shell.** Non-deployed; in-memory state; port 8002. Same pattern as every prior Phase 1/2 shell -- Aurora-backed in production (Entry 003), in-memory for local development and testing.
+- **Two-table history model.** `source_health_records` (migration 0001) remains the current-state upsert table (one row per source). `source_health_history` (migration 0004) is the new append-only time-series table (one row per adapter run). C24 reads from `source_health_records` for fleet-summary queries and writes to `source_health_history` for trend/staleness analysis. The two-table design avoids unbounded row growth on the current-state table.
+- **HealthStore owns accumulation; SourceHealthMonitor owns thresholds.** `base.py` always emits `consecutive_failures` of 0 (success) or 1 (failure) -- a single-run snapshot. `HealthStore.ingest()` accumulates the true running count across calls. `SourceHealthMonitor.evaluate()` is stateless: it receives the accumulated count and returns `HealthAlert` objects. This separation makes the threshold logic trivially unit-testable without any I/O.
+- **Alert types: CONSECUTIVE_FAILURES, SCHEMA_DRIFT, STALE_SOURCE, LOW_RECORD_COUNT, AUTH_FAILURE.** Thresholds: failure_warning=3, failure_critical=5, stale_bulk=48h, stale_api=4h (all configurable via `MonitorSettings` / env). AUTH_FAILURE is always CRITICAL regardless of consecutive count.
+- **Stale threshold split by integration method.** OIG LEIE (F2) is the only P1 BULK_DOWNLOAD source; its refresh cadence is monthly, so a 48h stale window is appropriate. All 7 REST_API sources use a 4h window. The `HealthStore` carries `_P1_SOURCES` registry so the integration method is always known from the source_id.
+- **P1 inventory: 8 sources (not 9).** I4 (NPPES Specialty Crosswalk) is a derived helper module (DECISIONS.md Entry 021), not a `SourceConnector`. It emits no `SourceHealthRecord` and is excluded from the health monitor's P1 registry. The 8 monitored P1 connector sources are: F1, F2, F3, F4, I1, I2, A1, A2.
+- **0003 seed divergence noted.** Migration 0003 seeded `source_health_records` with F1-F4 and F5-F9 (pre-Phase-2-B placeholders). Migration 0004 adds the correct Phase 2-B IDs (I1, I2, A1, A2) with ON CONFLICT DO NOTHING. The old F5-F9 rows are left in place to avoid altering a previously committed migration.
+- **Alerting rules extended.** `src/observability/prometheus/rules/alerting-rules.yaml` gains `DataSourceConsecutiveFailuresWarning`, `DataSourceConsecutiveFailuresCritical`, and `DataSourceStale` (with bulk/API threshold split via `integration_method` label). The prior `DataSourceUnavailable` and `DataSourceSchemaDrift` rules (added in Phase 1-D) are retained unchanged.
+- **`make run-monitor`** starts the shell on port 8002 (8000=auth, 8001=audit, 8002=monitor).
+
+**Deferred / open:**
+- DB-backed current-state upsert (Aurora `source_health_records`) and history append (`source_health_history`) when Entry 003 is resolved.
+- Prometheus metric exports (`source_consecutive_failures`, `source_last_successful_run_age_seconds`) require an `/metrics` endpoint or OTel gauge; wired when the service is deployed and the ServiceMonitor scrapes it.
+- ServiceMonitor for `source-health-monitor` already exists in the 1-D blanket ServiceMonitor (`servicemonitors.yaml`); no new ServiceMonitor needed.
+- Active probe mode (C24 Phase 2 -- Phase 3-K): the MVP only ingests records from adapter push; Phase 3-K adds scheduled pull probes that run adapters on a cron.
+
+**Locked:** FastAPI shell, two-table history model, HealthStore/SourceHealthMonitor separation, 8 P1 connector sources, alert types + thresholds as above, `make run-monitor` on port 8002.

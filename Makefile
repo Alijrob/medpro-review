@@ -1,6 +1,6 @@
 # Makefile — Medical Professionals Review
 
-.PHONY: dev-setup run-backend run-gateway run-audit run-frontend lint test \
+.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-frontend lint test \
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
@@ -16,6 +16,7 @@ help:
 	@echo "  run-backend          Start the auth service dev server (Phase 1-F)"
 	@echo "  run-gateway          Start the API gateway dev server (Phase 1-G)"
 	@echo "  run-audit            Start the audit ledger service dev server (Phase 1-I)"
+	@echo "  run-monitor          Start the source health monitor dev server (Phase 2-C)"
 	@echo "  run-frontend         Start Next.js frontend dev server (Phase 2-K+)"
 	@echo "  lint                 Run all linters (Python: black/flake8/mypy; TS: eslint/prettier)"
 	@echo "  test                 Run all tests (pytest + jest)"
@@ -54,6 +55,11 @@ run-audit:
 	@echo "Starting audit ledger service (Phase 1-I shell) on http://localhost:8001 ..."
 	@echo "Try: curl localhost:8001/healthz  |  docs at /docs"
 	PYTHONPATH=src uvicorn backend.audit_service.app:app --reload --port 8001
+
+run-monitor:
+	@echo "Starting source health monitor (Phase 2-C shell) on http://localhost:8002 ..."
+	@echo "Try: curl localhost:8002/healthz  |  docs at /docs"
+	PYTHONPATH=src uvicorn backend.source_health_monitor.app:app --reload --port 8002
 
 run-frontend:
 	@echo "[Phase 2-K not yet built] Frontend not available yet."

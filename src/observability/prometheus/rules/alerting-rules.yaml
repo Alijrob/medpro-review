@@ -75,6 +75,41 @@ groups:
           summary: "Data source {{ $labels.source_id }} slow"
           description: "p95 fetch latency for {{ $labels.source_id }} is {{ $value }}s (threshold 30s)."
 
+      # Phase 2-C: C24 SourceHealthMonitor exports accumulated failure count.
+      - alert: DataSourceConsecutiveFailuresWarning
+        expr: source_consecutive_failures >= 3
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Data source {{ $labels.source_id }} has {{ $value }} consecutive failures"
+          description: "{{ $labels.source_id }} adapter has failed {{ $value }} times in a row. Reports may use stale data."
+
+      - alert: DataSourceConsecutiveFailuresCritical
+        expr: source_consecutive_failures >= 5
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Data source {{ $labels.source_id }} critically degraded ({{ $value }} failures)"
+          description: "{{ $labels.source_id }} has {{ $value }} consecutive failures. Source data is unavailable."
+
+      - alert: DataSourceStale
+        # source_last_successful_run_age_seconds exported by C24.
+        # Bulk sources (e.g. OIG LEIE) threshold: 48h = 172800s.
+        # API sources threshold: 4h = 14400s.
+        # The C24 monitor labels the metric with integration_method for threshold routing.
+        expr: |
+          (source_last_successful_run_age_seconds{integration_method="bulk_download"} > 172800)
+          or
+          (source_last_successful_run_age_seconds{integration_method="rest_api"} > 14400)
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Data source {{ $labels.source_id }} data is stale"
+          description: "{{ $labels.source_id }} last succeeded {{ $value | humanizeDuration }} ago. Source data may be out of date."
+
   # ---------------------------------------------------------------------------
   - name: audit_ledger
     rules:
