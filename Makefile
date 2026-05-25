@@ -4,7 +4,7 @@
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test \
+        opa-test connectors-test \
         help
 
 ENV ?= dev
@@ -32,6 +32,7 @@ help:
 	@echo "  gitops-guard         Deploy-time PLACEHOLDER guard — blocks ArgoCD sync until Entry 003"
 	@echo ""
 	@echo "  opa-test             Run OPA policy unit tests (Phase 1-H, requires opa CLI)"
+	@echo "  connectors-test      Run Source Connector Framework tests (Phase 2-A)"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -122,3 +123,8 @@ opa-test:
 	@echo "Validating + testing OPA policy bundle (Phase 1-H)..."
 	opa check src/policy
 	opa test src/policy -v
+
+connectors-test:
+	@echo "Testing the Source Connector Framework (Phase 2-A)..."
+	PYTHONPATH=src poetry run pytest tests/connectors/ -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/connectors/ -v

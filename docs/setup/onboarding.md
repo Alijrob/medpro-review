@@ -28,7 +28,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-I COMPLETE** — Audit Ledger Service (`src/backend/audit_service/`, component C5-audit): the append-only, hash-chained ledger that replaces QLDB (Entry 005). `ledger.py` assigns `prev_event_hash`/`event_hash` per `(target_type, target_id)` chain, appends immutably, and verifies by recomputation (detects altered contents and removed/reordered events); FastAPI surface for append/chain/verify/checkpoint; 15 behavior tests; runs via `make run-audit`. Deploys to the `workers` namespace (internal-only ClusterIP, NetworkPolicy baseline); Aurora-only (S3 WORM = Phase 4-F). DECISIONS.md Entry 013. Phase 1 foundations complete; Phase 2-A (Source Connector Framework) is next.
+**Phase 2-A COMPLETE** — Source Connector Framework (`src/connectors/`, component C9): the async-first library every source adapter (C10) builds on — `SourceConnector` ABC, `ConnectorConfig`, error taxonomy, in-house retry/backoff, client-side throttling, a `SchemaContract` runtime drift guard (risk R6), and a reusable `assert_connector_contract` test harness. Output is a `RawRecord` (pre-normalization; C11 is Phase 2-D) + a `SourceHealthRecord` per run. 21 tests (sync, via `asyncio.run` — no pytest-asyncio). Framework only — no live source fetched (legal gate governs the C10 adapters). DECISIONS.md Entry 014. Phase 2-B (Federal Source Adapters) is next.
+**Phase 1-I COMPLETE** — Audit Ledger Service (`src/backend/audit_service/`, component C5-audit): the append-only, hash-chained ledger that replaces QLDB (Entry 005). `ledger.py` assigns `prev_event_hash`/`event_hash` per `(target_type, target_id)` chain, appends immutably, and verifies by recomputation (detects altered contents and removed/reordered events); FastAPI surface for append/chain/verify/checkpoint; 15 behavior tests; runs via `make run-audit`. Deploys to the `workers` namespace (internal-only ClusterIP, NetworkPolicy baseline); Aurora-only (S3 WORM = Phase 4-F). DECISIONS.md Entry 013. **Phase 1 foundations complete.**
 **Phase 1-H COMPLETE** — OPA Baseline (component C2): policy bundle in `src/policy/` (`medpro.authz` + `medpro.redaction`, 16 `opa test` units), delivered as the `opa-policy` ConfigMap by a sync-wave -1 ArgoCD app; OPA sidecar added to the gateway pod (localhost:8181) with `OPA_ENABLED=true` flipped on in-cluster (local dev stays off); NetworkPolicy baseline for the `api-gateway` namespace (default-deny + Entry 011 cross-namespace allows). DECISIONS.md Entry 012.
 **Phase 1-G COMPLETE** — API Gateway shell (`src/backend/api_gateway/`, component C8): FastAPI gateway that mounts the 1-F auth overlay and adds rate limiting, idempotency, request-id, security headers, and an OPA authz hook (C2 baseline). Deployable via a `workloads` ArgoCD app-of-apps into the `api-gateway` namespace (DECISIONS.md Entry 011). 15 behavior tests; runs via `make run-gateway`.
 **Phase 1-F COMPLETE** — Auth & Identity Service shell (`src/backend/auth_service/`, C7): Auth0 JWT validation (RS256/JWKS), RBAC gates, Path B permissible-use gate. `make run-backend`.
@@ -58,7 +59,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-G | API Gateway Shell (C8 — auth overlay, rate limit, idempotency, OPA hook) | ✅ Complete |
 | 1-H | OPA Baseline (C2 — policy bundle, sidecar, NetworkPolicies) | ✅ Complete |
 | 1-I | Audit Ledger Service (C5-audit — append-only, hash-chained) | ✅ Complete |
-| 2-A | Source Connector Framework | 🔄 Up next |
+| 2-A | Source Connector Framework (C9 — base classes, retry/throttle, contract testing) | ✅ Complete |
+| 2-B | Federal Source Adapters (NPPES, OIG, SAM.gov) | 🔄 Up next |
 
 ---
 
@@ -186,6 +188,11 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/backend/audit_service/deploy/` | kustomize Deployment + Service + NetworkPolicies (workers namespace, workers-sa) |
 | `src/gitops/argocd/workloads/audit-service.yaml` | Audit service ArgoCD child app (workers namespace) |
 | `tests/backend/test_audit_service.py` | 15 behavior tests (append/hash, chain linkage, tamper detection, checkpoints) |
+| `src/connectors/` | **Source Connector Framework (C9)** — base classes, retry/throttle, schema-drift contract, test harness |
+| `src/connectors/base.py` | `SourceConnector` ABC — adapters implement `fetch_raw`; `run()` orchestrates fetch + health |
+| `src/connectors/testing.py` | Reusable contract-test harness (`assert_connector_contract`, `stub_transport`) for C10 adapters |
+| `src/connectors/README.md` | Connector framework quick-reference — how to write + contract-test an adapter |
+| `tests/connectors/test_framework.py` | 21 framework tests (hashing, retry/backoff, throttle, contract, run/health) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -202,7 +209,12 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 2-A:** Source Connector Framework (C9) — the base classes, error handling, throttling, retry/backoff, and contract-testing harness that every source adapter (C10, Phase 2-B onward) builds on. This opens **Phase 2 (Core Identity & MVP)**; all Phase 1 foundations (schema, IaC, data, observability, GitOps, auth, gateway, OPA, audit ledger) are complete. The Phase 0 legal gate still governs anything that ingests real source data.
+**Phase 2-B:** Federal Source Adapters (C10) — the first real connectors built on the C9 framework: NPPES/NPI (F1, bulk + API), OIG LEIE (F2, monthly bulk CSV + API), SAM.gov Exclusions (F3, REST API). Each subclasses `SourceConnector`, declares a `SchemaContract`, and ships an `assert_connector_contract` test. **These ingest real source data, so each is governed by the Phase 0 legal gate** and its ToS/clearance tier (all three are T1/L0 open-data, the lowest-risk tier — see `source-priority.md`). The build sequence is NPPES first (the identity anchor every downstream component keys on).
+
+**Phase 2-A connector framework validates locally (no network needed — transports stubbed):**
+```bash
+make connectors-test                              # or: PYTHONPATH=src pytest tests/connectors/ -v  (21 tests)
+```
 
 **Phase 1-I audit service validates locally (no DB/cluster needed):**
 ```bash

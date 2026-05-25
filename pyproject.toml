@@ -9,6 +9,7 @@ packages = [
     { include = "data", from = "src" },
     { include = "observability", from = "src" },
     { include = "backend", from = "src" },
+    { include = "connectors", from = "src" },
 ]
 
 [tool.poetry.dependencies]

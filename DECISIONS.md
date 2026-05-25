@@ -175,4 +175,21 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 014 — Source Connector Framework Design (Phase 2-A)
+
+**Date:** 2026-05-25
+**Decision:** The Source Connector Framework (component C9) lives in `src/connectors/` as a **library** (not a deployed service — adapters run as workers/Temporal activities later). Design choices:
+- **Async-first** (`httpx`), per the locked stack (tool-recommendations). Tests drive the async code with `asyncio.run` from sync test functions, so **no `pytest-asyncio` dependency** is added (it is declared in pyproject but not installed in CI/local; the existing suite has no async tests).
+- **Retry/backoff is in-house** (`retry.py`) — exponential backoff with full jitter, honoring `Retry-After`. The locked stack names `httpx` for HTTP and nothing for retry; rather than introduce `tenacity`, the framework stays dependency-free and fully injectable (sleep/clock/rng).
+- **A connector's output is a `RawRecord`** (raw payload + content-addressed SHA-256 via `DataProvenance.hash_raw`), **pre-normalization**. Turning a RawRecord into a typed `NormalizedRecord` is C11 (Phase 2-D), deliberately kept out of C9.
+- **Error taxonomy** maps each failure to `retryable` + a `SourceStatus`; the framework classifies HTTP responses (429 → rate-limited, 401/403 → auth, 5xx/timeouts → retryable unavailable, other 4xx → permanent).
+- **Schema-drift = contract** (`SchemaContract`): adapters declare required fields/types; the framework validates each raw record at runtime and raises `SchemaDriftError` (SCHEMA_DRIFT health) rather than emitting malformed records silently — directly addressing architecture risk **R6**.
+- **`run()` produces a `SourceHealthRecord`** (the existing C24 schema) every run, so the Source Health Monitor has a uniform signal.
+**Reason:** Matches the locked stack and the "what to avoid" list (no ad-hoc scraping outside the C9 framework, no homegrown auth, no unnecessary deps). Pre-normalization output keeps C9/C11 cleanly separated. The contract guard operationalizes R6.
+**Legal gate:** C9 is the **framework only** — it fetches no live source. Real ingestion is in the C10 adapters (Phase 2-B+), each governed by the Phase 0 legal gate and its per-source ToS/clearance tier (Source Priority Matrix).
+**Risk acknowledged:** The default `httpx.AsyncClient` transport path is present but untested (tests always inject a stub transport); it is exercised when the first real adapter lands. The per-instance `RateLimiter` is a per-replica floor — a Redis-backed global limiter (ElastiCache) is layered on when adapters run multi-replica.
+**Locked:** Framework design + package location + async-first + RawRecord output yes; the global rate-limiter and real transport land with the first adapter.
+
+---
+
 <!-- Add new entries below this line -->

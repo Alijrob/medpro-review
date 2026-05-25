@@ -1,0 +1,32 @@
+name: Connectors Validate
+
+on:
+  push:
+    paths:
+      - "src/connectors/**"
+      - "tests/connectors/**"
+      - ".github/workflows/connectors-validate.yml"
+  pull_request:
+    paths:
+      - "src/connectors/**"
+      - "tests/connectors/**"
+      - ".github/workflows/connectors-validate.yml"
+
+jobs:
+  connectors-tests:
+    name: Source Connector Framework Tests (C9)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install pydantic httpx pytest
+
+      # The framework is async-first; tests drive it with asyncio.run, so no
+      # pytest-asyncio is required. No network — transports are stubbed.
+      - name: Run connector framework tests
+        run: PYTHONPATH=src pytest tests/connectors/ -v
