@@ -1,8 +1,9 @@
-# Session Summary: 2026-05-25 — Full Day (Phases 1-F → 2-B.2)
+# Session Summary: 2026-05-25 -- Full Day (Phases 1-F through 2-B.4)
 
-> Four build sessions landed on 2026-05-25. This file is the day rollup.
+> Six build sessions landed on 2026-05-25. This file is the day rollup.
 > **Session 1**: Phases 1-F + 1-G. **Session 2**: Phases 1-H, 1-I, 2-A.
 > **Session 3**: Phase 2-B.1 (NPPES). **Session 4**: Phase 2-B.2 (OIG LEIE).
+> **Session 5**: Phase 2-B.3 (SAM.gov). **Session 6**: Phase 2-B.4 (CMS Care Compare).
 > Per-phase detail lives in the matching `2026-05-25-session-summary-phase-*.md` files.
 
 ---
@@ -353,3 +354,88 @@ PYTHONPATH=src pytest tests/ -m "not integration"
 => 376 passed, 7 deselected
    44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors | 14 nppes | 12 oig-leie
 ```
+
+---
+
+## Session 5 -- Phase 2-B.3 (SAM.gov Exclusions, F3)
+
+**Commit:** a313102
+**Phase:** 2-B.3 -- SAM.gov Exclusions adapter (F3) -- COMPLETE
+
+### What happened
+
+Built the SAM.gov Exclusions adapter (source F3). SAM.gov is the authoritative federal
+debarment/suspension registry; its exclusions list complements LEIE (F2) -- some providers
+appear on SAM but not LEIE. The adapter pages through
+`https://api.sam.gov/entity-information/v3/exclusions` with `api_key` + `page` + `size`.
+The `api_key` is a constructor argument (not in ConnectorConfig -- framework convention:
+secrets at construction time). Pagination uses dual termination: empty `entityData` page
+(explicit sentinel) OR `(page+1)*size >= totalRecords` (math-based). If `totalRecords`
+is absent from the response, falls back to empty-page sentinel only -- safe against
+malformed responses. A `SchemaContract` guards two top-level dicts (`exclusionDetails`,
+`entityRegistration`) as the structural R6 drift guard. Delta-sync mode deferred.
+DECISIONS.md Entry 017.
+
+### Files changed
+
+- `src/connectors/sources/sam_gov.py` (new)
+- `tests/connectors/test_sam_gov.py` (new -- 15 tests)
+- `src/connectors/sources/__init__.py` (F3 exports)
+- `DECISIONS.md` Entry 017
+- `src/connectors/README.md` (F3 row)
+- `docs/setup/onboarding.md`
+- `docs/session-logs/2026-05-25-session-summary-phase-2b3.md` (new)
+
+### Tests run (Session 5 end)
+
+```
+PYTHONPATH=src pytest tests/ -m "not integration"
+=> 391 passed, 7 deselected
+   44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors | 14 nppes | 12 oig-leie | 15 sam-gov
+```
+
+---
+
+## Session 6 -- Phase 2-B.4 (CMS Care Compare, F4)
+
+**Commit:** f2893d4
+**Phase:** 2-B.4 -- CMS Care Compare adapter (F4) -- COMPLETE
+
+### What happened
+
+Built the CMS Care Compare / Doctors and Clinicians adapter (source F4) -- the
+highest-value CMS dataset (V=5 in the priority matrix). The "Physicians & Other
+Clinicians" national downloadable file on `data.cms.gov` contains NPI-level records
+for every provider who has billed Medicare: name, specialty, practice address, hospital
+affiliations, group practice membership, and accepts-assignment flag. The adapter uses
+the Socrata SODA 2.0 API (`/resource/{dataset_id}.json`) with `$limit`/`$offset`/
+`$order=:id` pagination and short-page sentinel termination. No API key required.
+The `dataset_id` is a configurable constructor arg (default `mj5m-pzi6`) to survive
+CMS dataset refreshes. The dataset has one row per practice location per NPI; C11
+normalization (Phase 2-D) groups by NPI. `SchemaContract` guards 8 fields.
+DECISIONS.md Entry 018.
+
+### Files changed
+
+- `src/connectors/sources/cms_care_compare.py` (new)
+- `tests/connectors/test_cms_care_compare.py` (new -- 17 tests)
+- `src/connectors/sources/__init__.py` (F4 exports)
+- `DECISIONS.md` Entry 018
+- `src/connectors/README.md` (F4 row)
+- `docs/setup/onboarding.md`
+- `docs/session-logs/2026-05-25-session-summary-phase-2b4.md` (new)
+
+### Tests run (Session 6 end / close-out)
+
+```
+PYTHONPATH=src pytest tests/ -m "not integration"
+=> 408 passed, 7 deselected
+   44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors | 14 nppes | 12 oig-leie | 15 sam-gov | 17 cms
+```
+
+### End-of-day state
+
+- 408 pytest passing + 16 OPA Rego tests
+- 4 federal adapters complete (F1-F4); next: I1 (CMS Medicare Enrollment, Phase 2-B.5)
+- All adapters built + contract-tested against stubbed transports only; live ingestion behind Phase 0 gate
+- pagios-ops tracker Phase Summary table updated (2-B row now reflects 2-B.1 through 2-B.4)
