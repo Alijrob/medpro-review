@@ -275,3 +275,24 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 ---
 
 <!-- Add new entries below this line -->
+
+## Entry 020 -- CMS Medicaid Enrollment Adapter Design (Phase 2-B.6)
+
+**Date:** 2026-05-25
+**Decision:** The CMS Medicaid Enrollment adapter -- source I2 -- ships as a **single-dataset Socrata SODA REST API** adapter (`IntegrationMethod.REST_API`), simpler than I1's two-dataset design:
+
+- **Single dataset, single pass.** Unlike I1 (Medicare Enrollment + Opt-Out Affidavits = two SODA datasets), I2 covers a single signal: Medicaid provider enrollment participation by state. One dataset, one `fetch_raw` pass, standard base-class contract path (no `_record_type` tagging, no `contract = None` suppression needed). This is the appropriate design because there is no Medicaid opt-out equivalent and no second dataset that semantically belongs to the same I2 source entry.
+- **SODA pagination pattern.** `$limit` + `$offset` + `$order=:id`, short-page sentinel termination -- identical to F4 (Care Compare) and I1 (Medicare Enrollment). No API key required.
+- **5-field schema contract.** Guards: `npi` (identity anchor), `last_name` + `first_name` (identity confirmation), `state_cd` (critical -- Medicaid is state-administered; state is the primary grouping dimension), `provider_type_desc` (specialty signal for primary care + pediatric coverage analysis). Extra columns pass through without SCHEMA_DRIFT. Contract field names should be verified against the live dataset schema before first live ingest.
+- **Configurable `dataset_id`.** Default is a placeholder that must be verified against `data.cms.gov/provider-data` or `data.cms.gov/provider-characteristics/medicaid` before live ingest. CMS periodically refreshes datasets; making the ID configurable means the adapter survives a dataset refresh without a code change.
+- **`expected_min_records` default is `None`** (no threshold enforced). Production deployments should override to a value consistent with the specific national CMS dataset size (likely tens of thousands to hundreds of thousands of records).
+- **No `_record_type` tag.** I2 yields a single record type (Medicaid enrollment); the tag is unnecessary. C11 normalization (Phase 2-D) routes by `source_id == "I2"` rather than inspecting a record-type tag.
+
+**Design contrast with I1:**
+- I1: two datasets + two contracts + `_record_type` tag + `contract = None` + graceful PARTIAL result on second-dataset failure.
+- I2: one dataset + one contract + standard base-class path. No partial-result complexity because there is no second pass to partially fail.
+
+**Reason:** I2 is semantically a single signal (Medicaid participation). The additional complexity of I1's dual-dataset design is not warranted here. The SODA pattern is the established `data.cms.gov` integration path; reusing it keeps the P1 federal batch consistent and makes the C24 Source Health Monitor's adapter inventory simple to scan.
+**Legal gate:** Built and tested against **stubbed transports only -- no network I/O**. Live ingestion is governed by the Phase 0 FCRA determination (I2 is T1/L0 open-data -- CC0, published on data.cms.gov).
+**Pre-live checklist:** (1) Verify `DEFAULT_DATASET_ID` against `data.cms.gov/provider-data`; (2) verify `_MEDICAID_REQUIRED_FIELDS` field names against live dataset schema; (3) set `expected_min_records` in production config.
+**Locked:** SODA REST_API mode, single dataset, single pass, 5-field contract, configurable `dataset_id`, standard base-class contract path.

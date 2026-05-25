@@ -12,13 +12,18 @@ network I/O on import and is tested only against stubbed transports; running an
 adapter against its live endpoint is a deploy-time action behind that gate.
 
 Phase 2-B federal batch (T1/L0 open-data, see docs/reference/source-priority.md):
-    F1  NPPES / NPI Registry   -- connectors.sources.nppes                    (built, 2-B.1)
-    F2  OIG LEIE               -- connectors.sources.oig_leie                 (built, 2-B.2)
-    F3  SAM.gov Exclusions     -- connectors.sources.sam_gov                  (built, 2-B.3)
-    F4  CMS Care Compare       -- connectors.sources.cms_care_compare         (built, 2-B.4)
-    I1  CMS Medicare Enrollment -- connectors.sources.cms_medicare_enrollment (built, 2-B.5)
+    F1  NPPES / NPI Registry     -- connectors.sources.nppes                     (built, 2-B.1)
+    F2  OIG LEIE                 -- connectors.sources.oig_leie                  (built, 2-B.2)
+    F3  SAM.gov Exclusions       -- connectors.sources.sam_gov                   (built, 2-B.3)
+    F4  CMS Care Compare         -- connectors.sources.cms_care_compare          (built, 2-B.4)
+    I1  CMS Medicare Enrollment  -- connectors.sources.cms_medicare_enrollment   (built, 2-B.5)
+    I2  CMS Medicaid Enrollment  -- connectors.sources.cms_medicaid_enrollment   (built, 2-B.6)
 """
 from .cms_care_compare import CmsCareCompareConnector, cms_care_compare_config
+from .cms_medicaid_enrollment import (
+    CmsMedicaidEnrollmentConnector,
+    cms_medicaid_enrollment_config,
+)
 from .cms_medicare_enrollment import (
     CmsMedicareEnrollmentConnector,
     cms_medicare_enrollment_config,
@@ -39,4 +44,6 @@ __all__ = [
     "cms_care_compare_config",
     "CmsMedicareEnrollmentConnector",
     "cms_medicare_enrollment_config",
+    "CmsMedicaidEnrollmentConnector",
+    "cms_medicaid_enrollment_config",
 ]
