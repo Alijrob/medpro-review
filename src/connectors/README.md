@@ -38,6 +38,9 @@ built and tested with no network I/O.
 | F4 — CMS Care Compare | `sources/cms_care_compare.py` | SODA paginated JSON ($limit/$offset/$order=:id); no key | 2-B.4 ✅ |
 | I1 — CMS Medicare Enrollment  | `sources/cms_medicare_enrollment.py`  | Two SODA datasets in one run: enrollment + opt-out; `_record_type` tag; no key | 2-B.5 ✅ |
 | I2 — CMS Medicaid Enrollment  | `sources/cms_medicaid_enrollment.py`  | Single SODA dataset; `$limit/$offset/$order=:id`; 5-field contract; no key     | 2-B.6 ✅ |
+| I4 — NPPES Specialty Crosswalk | `sources/nppes_taxonomy.py`          | Derived signal; no SourceConnector; `crosswalk_taxonomy_code` + `infer_specialty_group`; ~200+ NUCC codes | 2-B.7 ✅ |
+| A1 — PubMed / NCBI Entrez     | `sources/pubmed.py`                   | Two-step esearch+esummary; `retstart`/`retmax` pagination; `author_name` + optional `api_key`; 4-field contract | 2-B.8 ✅ |
+| A2 — ClinicalTrials.gov       | `sources/clinical_trials.py`          | API v2 cursor pagination (`pageToken`); `investigator_name`; single `protocolSection` contract; no key | 2-B.9 ✅ |
 
 ## Writing an adapter (C10, Phase 2-B)
 

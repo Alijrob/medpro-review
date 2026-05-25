@@ -276,6 +276,56 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 <!-- Add new entries below this line -->
 
+## Entry 021 -- NPPES Specialty Crosswalk Design (Phase 2-B.7 / I4)
+
+**Date:** 2026-05-25
+**Decision:** I4 (NPPES Specialty Crosswalk) ships as a **helper module, not a SourceConnector**. It is a derived signal: the NUCC taxonomy codes already captured in F1 (NPPES) RawRecords are mapped to human-readable specialty group names. No additional network fetch is needed. Location: `src/connectors/sources/nppes_taxonomy.py`.
+
+- **`TAXONOMY_CROSSWALK: dict[str, str]`** -- maps NUCC taxonomy codes (uppercase, 10-char) to specialty group name strings. Covers ~200+ most commonly encountered codes in clinical practice, organized by NUCC grouping. Unmapped codes return `None` (graceful degradation). The table should be verified against the official NUCC release (https://www.nucc.org/index.php/code-sets-mainmenu-41) before the first live ingest and kept current.
+- **`crosswalk_taxonomy_code(code: str) -> str | None`** -- direct lookup; normalizes input to uppercase before lookup.
+- **`infer_specialty_group(taxonomies: list[dict]) -> str | None`** -- takes an NPPES `taxonomies` array; prefers the taxonomy with `primary == True`, falls back through non-primary entries in order. Returns `None` if nothing maps. Used in C11 normalization (Phase 2-D) to populate `specialty_group` on a `CanonicalProviderProfile`.
+- **No SourceConnector subclass.** No health record, no fetch result, no contract. The crosswalk is pure data + pure functions; it is exercised by 31 unit tests (no stubbed transport needed).
+
+**Reason:** Source-priority.md explicitly notes: "Derived signal -- taxonomy codes from NPPES crosswalk to specialty groups. Build as part of the NPPES adapter (no separate adapter needed)." Adding a connector would be misleading -- no source fetch occurs. A standalone helper module with clean exports from `connectors.sources` is the correct abstraction.
+**Locked:** Helper module pattern; `crosswalk_taxonomy_code` + `infer_specialty_group` as the C11 normalization interface.
+
+---
+
+## Entry 022 -- PubMed / NCBI Entrez Adapter Design (Phase 2-B.8 / A1)
+
+**Date:** 2026-05-25
+**Decision:** The PubMed adapter -- source A1 -- ships as a **per-provider on-demand lookup adapter** that uses a **two-step NCBI Entrez API call sequence** per batch (`esearch` -> `esummary`):
+
+- **Two requests per batch.** NCBI Entrez requires a separate esearch call (returns PMIDs) and an esummary call (returns article metadata). Both are made inside `fetch_raw` per page of PMIDs. Both pass through the C9 `request()` helper for throttling, retry, and HTTP->error classification. This is the only adapter in the P1 batch that requires two requests per iteration.
+- **Author-name search (`{name}[Author]`).** NCBI PubMed does not index by NPI; the search term is a provider's name. Name disambiguation (separating the target provider's publications from namesakes) is a C11 normalization concern, not the adapter's. The adapter yields all matching articles.
+- **Pagination via `retstart` + `retmax`.** Standard NCBI Entrez pagination; stops on a short esearch page (fewer PMIDs than `retmax`). `retmax` defaults to 200 (well under NCBI's 10 000 per-request limit).
+- **`api_key` as optional constructor arg.** Unauthenticated rate limit: 3 req/s. With a key: 10 req/s. The key is passed as an `api_key` query parameter on all Entrez requests; it is never in `ConnectorConfig`.
+- **4-field contract.** Guards `uid` (PMID, str), `title` (str), `pubdate` (str), `authors` (list) -- the fields present on every NCBI esummary PubMed article. Extra fields (journal, doi, pages, etc.) pass through.
+- **`expected_min_records=None`.** Per-provider publication counts vary widely (0 for most generalists; hundreds for academic researchers). No floor is enforced by default.
+
+**Reason:** A1 is fundamentally different from F2-I2: it is not a batch/bulk source but an on-demand per-provider lookup by author name. The two-step esearch+esummary pattern is NCBI's documented approach. The adapter correctly models this without additional framework machinery.
+**Legal gate:** Built and tested against **stubbed transports only**. A1 is public domain (NIH/NLM), T1/L0.
+**Locked:** Two-step esearch+esummary, `retstart`/`retmax` pagination, `author_name` + `api_key` as constructor args, 4-field contract.
+
+---
+
+## Entry 023 -- ClinicalTrials.gov Adapter Design (Phase 2-B.9 / A2)
+
+**Date:** 2026-05-25
+**Decision:** The ClinicalTrials.gov adapter -- source A2 -- ships as a **per-provider on-demand lookup adapter** using the **ClinicalTrials.gov API v2** with **cursor-based pagination** (`pageToken`):
+
+- **API v2 cursor pagination.** Unlike SODA-style offset pagination (F4, I1, I2) or NCBI `retstart` pagination (A1), ClinicalTrials.gov v2 uses an opaque `pageToken` cursor. Each response either includes `nextPageToken` (more pages) or does not (last page). The adapter stops when `nextPageToken` is absent from the response.
+- **Investigator-name search (`{name}[Investigator]`).** ClinicalTrials.gov does not support NPI-based investigator lookup; the search term is a provider's name. Disambiguation is C11 normalization.
+- **Single structural contract.** Guards `protocolSection` (dict) on each study record. Inner sub-modules (`identificationModule`, `statusModule`, `contactsLocationsModule.overallOfficials`) are not contract-guarded to avoid false-positive drift if ClinicalTrials.gov reorganizes its nested schema. C11 normalization extracts NCT ID, status, phase, and investigator role.
+- **No API key.** ClinicalTrials.gov v2 is public, no key required or available.
+- **`page_size` defaults to 200.** API supports up to 1000 per page; 200 is conservative.
+- **`expected_min_records=None`.** Most providers have zero trials; no floor enforced by default.
+- **Simpler than A1.** Single request per page (no two-step sequence); cursor handles continuation.
+
+**Reason:** A2 is the natural companion to A1: same "build with A1 batch" note in source-priority.md, same per-provider on-demand pattern. ClinicalTrials.gov v2 cursor pagination is a cleaner API than NCBI retstart (no totalCount needed; last page is self-signaling via absent `nextPageToken`). Single contract guard is the right tradeoff given the deeply nested response structure.
+**Legal gate:** Built and tested against **stubbed transports only**. A2 is public domain (NIH), T1/L0.
+**Locked:** ClinicalTrials.gov API v2, cursor pagination, `investigator_name` as constructor arg, single `protocolSection` contract.
+
 ## Entry 020 -- CMS Medicaid Enrollment Adapter Design (Phase 2-B.6)
 
 **Date:** 2026-05-25
