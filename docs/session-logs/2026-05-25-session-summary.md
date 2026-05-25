@@ -220,3 +220,85 @@ PYTHONPATH=src pytest tests/ -m "not integration"
    44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors
 opa test src/policy => PASS 16/16
 ```
+
+---
+---
+
+## Session 3 — Phase 2-B.1 (NPPES Adapter, F1)
+
+Per-phase detail: `docs/session-logs/2026-05-25-session-summary-phase-2b1.md`.
+
+### Summary (readable cold)
+
+Opened **Phase 2-B (Federal Source Adapters, C10)** by building the **NPPES / NPI Registry
+adapter (source F1)** — the first concrete `SourceConnector` on the Phase 2-A framework, and
+the identity anchor every downstream component keys on. It runs in **API-lookup mode**: a
+per-provider query against the public CMS NPPES API (`/api/?version=2.1`), paginated via
+`skip` (page cap 200, skip cap 1000). A validated `NppesQuery` requires at least one of
+`number`/`last_name`/`organization_name`; a `SchemaContract` over
+`{number, enumeration_type, basic, addresses, taxonomies}` is the R6 drift guard; and NPPES's
+quirk of reporting bad queries as **HTTP 200 + an `Errors` array** (not a 4xx) is mapped to a
+non-retryable `PermanentError`. Concrete adapters now live in `src/connectors/sources/`. Built
+and contract-tested against **stubbed transports only — no network I/O**; live ingestion stays
+a deploy-time action governed by the **Phase 0 legal gate** (F1 is T1/L0 open-data). The monthly
+bulk-download mode is a deferred follow-on. 364 tests pass (was 350; +14 nppes). DECISIONS.md
+Entry 015.
+
+### Commit SHAs (Session 3, oldest → newest)
+
+| Repo | SHA | Message |
+|------|-----|---------|
+| medpro-review | 397b843 | Phase 2-B.1: NPPES / NPI Registry adapter (F1, C10) |
+| pagios-ops | 0c344e0 | medpro-review: Phase 2-B.1 NPPES adapter complete (2-B in progress) |
+
+**medpro-review HEAD at Session 3 start:** c743a8a (end of Session 2).
+
+### Files changed (by area)
+
+- Adapter (2-B.1): `src/connectors/sources/__init__.py`, `src/connectors/sources/nppes.py` (both new).
+- Tests: `tests/connectors/test_nppes.py` (new — 14 tests).
+- Decisions: `DECISIONS.md` Entry 015.
+- Docs: `src/connectors/README.md` (built-adapter inventory), `docs/setup/onboarding.md`, `docs/session-logs/2026-05-25-session-summary-phase-2b1.md` (new).
+- Tracker: `pagios-ops/trackers/medpro-review-phase-tracker.md` (Phase 2-B section).
+
+### Phase status
+
+- Phase 2-B.1 (NPPES / NPI Registry adapter, F1): COMPLETE.
+- Phase 2-B (Federal Source Adapters, C10): IN PROGRESS — 2-B.2 OIG LEIE (F2) up next, then 2-B.3 SAM.gov (F3).
+
+### Next likely step
+
+Phase 2-B.2 — OIG LEIE adapter (F2): the hard exclusion signal. Monthly bulk CSV + API
+spot-check (likely `IntegrationMethod.BULK_DOWNLOAD`); subclass `SourceConnector`, declare a
+`SchemaContract`, ship an `assert_connector_contract` test, mirror the F1 layout. Then 2-B.3
+SAM.gov (F3, keyed REST API). Both T1/L0; live ingestion stays behind the Phase 0 gate.
+
+### Known blockers
+
+1. Phase 0 legal gate (FCRA) — gates **live** ingestion in the C10 adapters; adapter code + contract tests are network-free and safe to build.
+2. AWS account/region (Entry 003) — PLACEHOLDER everywhere; blocks any deploy. Domain locked (researchyourdoctor.com).
+3. No live cluster / Auth0 tenant / DB — shells + adapters validated structurally only.
+
+### Verified checks
+
+- Both working trees clean; medpro-review HEAD 397b843 == origin/main; pagios-ops HEAD 0c344e0 == origin/main.
+- `PYTHONPATH=src pytest tests/ -m "not integration"` => **364 passed, 7 deselected** (44 schema + 20 data + 39 observability + 179 gitops + 47 backend + 21 connectors + 14 nppes).
+- Adapter imports cleanly (`from connectors.sources import NppesConnector, NppesQuery, nppes_config`).
+
+### Blocked checks
+
+- No live NPPES endpoint exercised (legal gate); no cluster/Auth0/DB.
+
+### Unverified items
+
+- Default `httpx.AsyncClient` transport path still untested (tests inject stubs) — exercised only on a live run.
+- NPPES `result_count` / skip-cap semantics modeled from the documented API, not verified live.
+- `source_record_id` left unset on `RawRecord` (NPI lives inside `raw`); populated in C11 (2-D).
+
+### Tests run (Session 3 end)
+
+```
+PYTHONPATH=src pytest tests/ -m "not integration"
+=> 364 passed, 7 deselected
+   44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors | 14 nppes
+```
