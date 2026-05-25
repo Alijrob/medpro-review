@@ -14,11 +14,13 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
-## Entry 002 — Auth0 vs. Okta: Unresolved
+## Entry 002 — Auth Provider: Auth0 (Locked)
 
-**Date:** 2026-05-24
-**Status:** UNRESOLVED — architecture says "Auth0/Okta." Final selection must be locked before Phase 1-F.
-**Impact:** SDK choice differs: `nextjs-auth0` vs. `@okta/okta-react`. Delay resolution past Phase 1-F start is a blocker.
+**Date:** 2026-05-24 (opened) / 2026-05-25 (resolved)
+**Decision:** **Auth0** is the IDaaS for the auth layer. SDKs: `nextjs-auth0` (frontend, Phase 2-K); Auth0 JWT validation via JWKS in the FastAPI backend (Phase 1-F onward).
+**Reason:** Path B (Entry 004) is strictly B2C consumer identity. Auth0 is purpose-built for CIAM — first-class Next.js SDK, social + passwordless login, low-friction consumer signup — whereas Okta's strength is workforce/enterprise SSO, which Path B forecloses. Auth0 is an Okta product, so the choice is not a dead-end if requirements shift.
+**Risk acknowledged:** MAU-based pricing dependency on Auth0. Mitigated by building on standard OIDC/JWT (JWKS validation, RS256), so a future move to another OIDC provider is a config change, not a re-architecture.
+**Locked:** Yes.
 
 ---
 
@@ -105,10 +107,10 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 **Reason:** Matches the locked stack and the existing infra (EKS `observability` namespace + IRSA already provisioned in the iam module). Config-as-code, non-deployed, consistent with the Phase 1-B IaC pattern.
 
-**Open sub-item (Unresolved):** **Sentry SaaS vs. self-hosted** is not yet decided. SaaS is faster to operate but sends error payloads off-cluster — a data-residency consideration for regulated healthcare-adjacent data. Self-hosted keeps everything in-VPC at higher ops cost. PII scrubbing is mandatory either way and is already implemented. Must be decided before Sentry is actually wired (Phase 1-F, when services exist).
+**Sentry hosting (Resolved 2026-05-25):** **Sentry SaaS.** PII is already scrubbed at two layers (OTel collector `attributes/scrub_pii` + Sentry `before_send`, `send_default_pii=False`, SSN/email redaction) before any payload leaves the SDK, which mitigates the off-cluster residency concern for a pre-revenue non-CRA product. Self-hosted Sentry (Relay/Kafka/ClickHouse/Postgres) is not justified by the residual risk at this stage. The Sentry region is pinned at wiring time. **Revisit trigger:** if the product ever ingests actual PHI (beyond public-record physician data + consumer account/payment data), re-evaluate self-hosted or a BAA-backed plan before continuing.
 
 **Impact:** Phase 1-D config is complete and validated. Deployment waits on Entry 003 (AWS account/region) and the Phase 1-E GitOps layer.
-**Locked:** Topology yes; Sentry hosting mode no.
+**Locked:** Topology yes; Sentry hosting mode yes — SaaS (2026-05-25).
 
 ---
 

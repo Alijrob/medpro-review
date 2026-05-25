@@ -33,7 +33,9 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 **Legal gate still active** — FCRA determination pending. IaC skeletons, schema, data layer, observability, and GitOps config are safe to build; no running services until gate closes.
 **IaC + observability + GitOps are non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply` or any ArgoCD sync.
 **Domain locked** — researchyourdoctor.com (DECISIONS.md Entry 008).
-**Open before Phase 1-F** — Sentry SaaS vs. self-hosted (Entry 009); Auth0 vs. Okta (Entry 002); OTel gateway config-mount wiring (Entry 010).
+**Auth provider locked** — Auth0 (DECISIONS.md Entry 002, resolved 2026-05-25).
+**Sentry hosting locked** — SaaS, PII scrubbed before egress (DECISIONS.md Entry 009, resolved 2026-05-25).
+**Open before deploy** — OTel gateway config-mount wiring (Entry 010); AWS account/region (Entry 003).
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
@@ -161,10 +163,10 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 ## Known Blockers
 
 1. **Phase 0 Legal Gate** — FCRA determination is blocking all engineering code. ETA: 16 weeks from legal engagement start.
-2. **Auth0 vs. Okta selection** — Must be locked before Phase 1-F starts. (See DECISIONS.md Entry 002.)
+2. ~~Auth0 vs. Okta selection~~ — RESOLVED: **Auth0** (DECISIONS.md Entry 002, 2026-05-25).
 3. **AWS account / region** — Not yet assigned. Blocks Phase 1-B (IaC) and Phase 1-D (observability) from being deployable. Domain is locked (researchyourdoctor.com, Entry 008). (See DECISIONS.md Entry 003.)
 4. **Ground truth dataset** — Required for C12 identity resolution >98% precision target. Must be assigned an owner before Phase 2-E.
-5. **Sentry hosting mode** — SaaS vs. self-hosted undecided (PII residency). Decide before Phase 1-F wires Sentry. (See DECISIONS.md Entry 009.)
+5. ~~Sentry hosting mode~~ — RESOLVED: **SaaS** (DECISIONS.md Entry 009, 2026-05-25). Region pinned at wiring time; revisit if actual PHI is ever ingested.
 
 ---
 
