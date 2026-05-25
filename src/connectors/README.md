@@ -33,7 +33,7 @@ built and tested with no network I/O.
 | Source | Module | Mode | Phase |
 |--------|--------|------|-------|
 | F1 — NPPES / NPI Registry | `sources/nppes.py` | API lookup (paginated via `skip`); bulk-DL deferred | 2-B.1 ✅ |
-| F2 — OIG LEIE | _pending_ | monthly bulk CSV + API spot-check | 2-B.2 |
+| F2 — OIG LEIE | `sources/oig_leie.py` | monthly bulk CSV; API spot-check deferred | 2-B.2 ✅ |
 | F3 — SAM.gov Exclusions | _pending_ | keyed REST API | 2-B.3 |
 
 ## Writing an adapter (C10, Phase 2-B)

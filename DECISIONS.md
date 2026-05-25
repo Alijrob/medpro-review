@@ -207,4 +207,20 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 016 — OIG LEIE Adapter Mode (Phase 2-B.2)
+
+**Date:** 2026-05-25
+**Decision:** The OIG LEIE (List of Excluded Individuals/Entities) adapter — source F2 — ships as a **bulk-download-first** adapter (`IntegrationMethod.BULK_DOWNLOAD`):
+- **Primary mode: monthly bulk CSV** from `https://oig.hhs.gov/exclusions/downloadables/LEIE.csv`. Each row is one excluded individual or entity; `csv.DictReader` parses it into a dict per row, yielded directly by `fetch_raw`. All field values are strings (standard CSV semantics). The adapter downloads the entire file in one `self.request()` call, then iterates synchronously — the LEIE file is ~5 MB (70 000+ rows), which fits in memory without streaming.
+- **`_parse_csv_text()` helper** extracts the `resp.text` string and raises `SourceUnavailableError` (retryable) if the response is empty or the `.text` property raises — surfacing download failures as `SourceStatus.DOWN` rather than silent empty runs.
+- **`SchemaContract` guards 11 columns**: `LASTNAME`, `FIRSTNAME`, `BUSNAME`, `NPI`, `EXCDATE`, `EXCLTYPE`, `ACTION`, `ADDRESS`, `CITY`, `STATE`, `ZIP` — the identity + exclusion-fact + location set. Columns that are informational or frequently blank (`MIDNAME`, `UPIN`, `SPECIALTY`, `REINDATE`, `WAIVERDATE`, `WAIVERSTATE`) are not guarded to avoid alerting on OIG adding optional columns; their absence would not break downstream normalization.
+- **NPI may be an empty string** — providers excluded before May 2008 (pre-NPI-era) may not have an NPI. Empty string is valid per the contract (`str` type passes, empty string is a valid string); downstream callers treat it as "NPI not recorded."
+- **API spot-check (per-NPI real-time lookup)** is deferred. For the MVP, LEIE checking is an in-memory or in-DB lookup against the bulk-loaded data, not a live API hit per report request. The OIG exclusion search is HTML-based (no documented JSON endpoint); an unofficial spot-check adapter is a follow-on.
+- **`expected_min_records` default is `None`** (no threshold enforced). Production deployments should override to ~60 000 to catch truncated downloads.
+**Reason:** The bulk CSV is the canonical, complete LEIE dataset — it is the authoritative source OIG maintains and it is the most efficient path for the MVP (one download loads all exclusions; per-NPI checks run in-memory). This mirrors the "bulk-first" design rationale of Entry 015 (NPPES). The CSV parse approach matches the actual OIG data format and avoids the risk of building on an undocumented API.
+**Legal gate:** Built and tested against **stubbed transports only — no network I/O**. Live ingestion against the OIG endpoint is a deploy-time action governed by the Phase 0 FCRA determination (F2 is T1/L0 open-data — U.S. Government Work, public domain per 17 U.S.C. § 105).
+**Locked:** BULK_DOWNLOAD mode, CSV-based parse, 11-field contract, empty-NPI allowance. API spot-check adapter deferred.
+
+---
+
 <!-- Add new entries below this line -->

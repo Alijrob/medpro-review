@@ -1,9 +1,9 @@
-# Session Summary: 2026-05-25 — Full Day (Phases 1-F → 2-A)
+# Session Summary: 2026-05-25 — Full Day (Phases 1-F → 2-B.2)
 
-> Two build sessions landed on 2026-05-25. This file is the day rollup.
-> **Session 1** (below): Phases 1-F + 1-G. **Session 2** (appended at the bottom):
-> Phases 1-H, 1-I, 2-A. Per-phase detail lives in the matching
-> `2026-05-25-session-summary-phase-*.md` files.
+> Four build sessions landed on 2026-05-25. This file is the day rollup.
+> **Session 1**: Phases 1-F + 1-G. **Session 2**: Phases 1-H, 1-I, 2-A.
+> **Session 3**: Phase 2-B.1 (NPPES). **Session 4**: Phase 2-B.2 (OIG LEIE).
+> Per-phase detail lives in the matching `2026-05-25-session-summary-phase-*.md` files.
 
 ---
 
@@ -301,4 +301,55 @@ SAM.gov (F3, keyed REST API). Both T1/L0; live ingestion stays behind the Phase 
 PYTHONPATH=src pytest tests/ -m "not integration"
 => 364 passed, 7 deselected
    44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors | 14 nppes
+```
+
+---
+---
+
+## Session 4 — Phase 2-B.2 (OIG LEIE Adapter, F2)
+
+Per-phase detail: `docs/session-logs/2026-05-25-session-summary-phase-2b2.md`.
+
+### Summary (readable cold)
+
+Built the **OIG LEIE adapter (source F2)** — the second C10 adapter and the first
+`BULK_DOWNLOAD` adapter in the federal batch. The LEIE is the authoritative federal exclusion
+list (a provider on it cannot be paid by any federal healthcare program); its absence is a
+required verification signal. The adapter downloads the monthly LEIE exclusions CSV from HHS OIG
+(`/exclusions/downloadables/LEIE.csv`) via one `self.request()` call, parses with
+`csv.DictReader` (one dict per row), and yields each row from `fetch_raw`. A `_parse_csv_text()`
+helper raises `SourceUnavailableError` on empty or unreadable responses, mapping to
+`SourceStatus.DOWN`. A `SchemaContract` over 11 key columns guards for R6 drift. Empty-string
+NPI is valid (pre-NPI-era exclusions). API spot-check deferred (no documented JSON endpoint at
+OIG). 12 new tests (376 total); DECISIONS.md Entry 016.
+
+### Commit SHAs (Session 4)
+
+| Repo | SHA | Message |
+|------|-----|---------|
+| medpro-review | (this commit — see git log) | Phase 2-B.2: OIG LEIE adapter (F2, C10) |
+| pagios-ops | (this commit — see git log) | medpro-review: Phase 2-B.2 OIG LEIE complete (2-B in progress) |
+
+**medpro-review HEAD at Session 4 start:** 717daa6 (end of Session 3).
+
+### Files changed (by area)
+
+- Adapter (2-B.2): `src/connectors/sources/oig_leie.py` (new).
+- Sources package: `src/connectors/sources/__init__.py` (F2 export added, inventory updated).
+- Tests: `tests/connectors/test_oig_leie.py` (new — 12 tests).
+- Decisions: `DECISIONS.md` Entry 016.
+- Docs: `src/connectors/README.md`, `docs/setup/onboarding.md`, `docs/session-logs/2026-05-25-session-summary-phase-2b2.md` (new).
+- Tracker: `pagios-ops/trackers/medpro-review-phase-tracker.md` (2-B.2 checked).
+
+### Phase status
+
+- Phase 2-B.2 (OIG LEIE adapter, F2): COMPLETE.
+- Phase 2-B (Federal Source Adapters, C10): IN PROGRESS — 2-B.3 SAM.gov (F3) next.
+
+### Tests run (Session 4 end)
+
+```
+PYTHONPATH=src pytest tests/ -m "not integration"
+=> 376 passed, 7 deselected
+   44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors | 14 nppes | 12 oig-leie
 ```
