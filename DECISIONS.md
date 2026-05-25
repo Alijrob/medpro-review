@@ -239,4 +239,20 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 018 -- CMS Care Compare Adapter Mode (Phase 2-B.4)
+
+**Date:** 2026-05-25
+**Decision:** The CMS Care Compare adapter -- source F4 -- ships as a **paginated Socrata SODA REST API** adapter (`IntegrationMethod.REST_API`):
+- **Primary mode: paginated Socrata SODA 2.0 API** against `https://data.cms.gov/resource/{dataset_id}.json`. The endpoint requires no API key (CC0/public domain). Pagination uses `$limit` + `$offset` + `$order=:id` (Socrata system row ID -- the only stable key for deterministic pagination across CMS's ~3 million row dataset). Termination fires when the response array is shorter than `$limit` (the Socrata short-page sentinel: the source returns exactly as many records as remain). An empty array also terminates. This is simpler and more robust than totalRecords math (Socrata SODA 2.0 does not return a totalRecords envelope field).
+- **Dataset ID is a configurable constructor arg** (default: `mj5m-pzi6`, the Doctors and Clinicians national downloadable file). CMS has superseded this dataset before; making the ID configurable means the adapter survives a dataset refresh without a code change.
+- **One row per practice location per NPI.** The Doctors and Clinicians dataset has one row per NPI per practice address. A provider with five locations yields five rows with the same NPI. The adapter yields all rows as-is; grouping and deduplication by NPI is C11 normalization (Phase 2-D), not the adapter's responsibility.
+- **`SchemaContract` guards 8 fields**: `npi`, `ind_pac_id`, `last_name`, `first_name`, `pri_spec`, `assgn`, `cty`, `st` with `str` type checks. These cover: identity-link to NPPES (`npi`), CMS-specific identity (`ind_pac_id`), provider name (`last_name`, `first_name`), clinical signal (`pri_spec` -- primary specialty), participation flag (`assgn` -- accepts Medicare assignment), and practice location (`cty`, `st`). The contract fires the R6 alarm if CMS restructures its schema or renames these core fields; extra columns (which CMS adds occasionally) pass through without alerting.
+- **No API key.** The Socrata public endpoint is unauthenticated. An optional `X-App-Token` header raises the rate limit ceiling but is not required for a single scheduled monthly ingest.
+- **`expected_min_records` default is `None`** (no threshold enforced). Production deployments should override to ~2 000 000 to catch truncated runs.
+**Reason:** The Socrata SODA API is the standard, stable integration path for `data.cms.gov` datasets. All CMS public provider datasets use this format; building to SODA means the pattern is reusable for F4, I1, I2, and any other CMS data.cms.gov datasets the platform adds. The short-page termination is idiomatic for SODA (no separate total-count request needed). The `$order=:id` is the correct Socrata pagination anchor for large datasets.
+**Legal gate:** Built and tested against **stubbed transports only -- no network I/O**. Live ingestion against data.cms.gov is a deploy-time action governed by the Phase 0 FCRA determination (F4 is T1/L0 open-data -- CC0 license, explicitly noted on data.cms.gov/provider-data).
+**Locked:** SODA REST_API mode, `$limit`/`$offset`/`$order=:id` pagination, short-page termination, configurable `dataset_id`, 8-field contract.
+
+---
+
 <!-- Add new entries below this line -->
