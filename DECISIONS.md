@@ -223,4 +223,20 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 017 -- SAM.gov Exclusions Adapter Mode (Phase 2-B.3)
+
+**Date:** 2026-05-25
+**Decision:** The SAM.gov Exclusions adapter -- source F3 -- ships as a **paginated REST API** adapter (`IntegrationMethod.REST_API`):
+- **Primary mode: paginated JSON API** against `https://api.sam.gov/entity-information/v3/exclusions`. The endpoint is free with a self-service API key from SAM.gov (CC0/public domain). Each page request carries `api_key`, `page` (0-indexed), and `size` (max 100). `totalRecords` from the first response page drives pagination depth. Pagination terminates when either: (a) a page returns an empty `entityData` list (explicit sentinel), or (b) `(page + 1) * page_size >= totalRecords` (all known records fetched). If `totalRecords` is absent, pagination relies solely on the empty-page sentinel -- a safe fallback that avoids an infinite loop on a malformed response.
+- **API key is a constructor arg**, not baked into `ConnectorConfig`. In deployed environments it comes from External Secrets Operator / Secrets Manager wired to the workers-sa IRSA role. This follows the connector framework convention ("secrets are passed at construction time, not config time") established in Phase 2-A.
+- **`SchemaContract` guards two top-level keys** in each `entityData` item: `exclusionDetails` (dict) and `entityRegistration` (dict). These two nested dicts are the stable structural contract -- `exclusionDetails` carries the exclusion fact (type, date, agency, NPI link); `entityRegistration` carries identity (UEI, legal name). Individual sub-keys within each dict are not guarded here; their mapping into typed signals is C11 normalization (Phase 2-D). The two-dict contract is the right granularity: it fires the R6 alarm if SAM.gov restructures its response (e.g., flattens the nested shape) without alerting on new optional sub-keys SAM.gov may add to either dict.
+- **`expected_min_records` default is `None`** (no threshold enforced). Production deployments should override to ~70 000 to catch truncated runs (the SAM.gov exclusions dataset contains ~80 000 active exclusions as of 2026).
+- **Delta-sync mode** (daily incremental using an `updatedDate` filter to fetch only new/changed exclusions) is a deferred follow-on. For the initial build and MVP, a full re-page is sufficient; the delta path lands once data volume makes full re-pages operationally expensive.
+- **REST_API** (not BULK_DOWNLOAD): the paginated JSON API is the natural integration method -- SAM.gov does publish bulk extract files (`/data-services/v1/extracts?fileType=EXCLUSION`), but these require a higher-tier API key and produce a zipped archive that is harder to integrate than the standard paginated JSON endpoint. The JSON API is the documented, stable path for programmatic exclusion lookups.
+**Reason:** Matches the source priority matrix ("API-key bulk + daily delta sync") and the locked connector framework design (REST_API path in C9, consistent with F1's NPPES adapter). The paginated JSON endpoint is the lowest-friction authoritative source for SAM.gov exclusions -- free API key, CC0 data, standard JSON pagination.
+**Legal gate:** Built and tested against **stubbed transports only -- no network I/O**. Live ingestion against the SAM.gov endpoint is a deploy-time action governed by the Phase 0 FCRA determination (F3 is T1/L0 open-data -- U.S. Government Work, public domain per 17 U.S.C. § 105).
+**Locked:** REST_API mode, paginated JSON endpoint, two-dict contract, api_key-as-constructor-arg. Delta-sync and bulk-extract modes deferred.
+
+---
+
 <!-- Add new entries below this line -->

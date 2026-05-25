@@ -28,7 +28,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 2-B IN PROGRESS** — Federal Source Adapters (C10), built on the C9 framework. **2-B.2 COMPLETE** — OIG LEIE adapter (source F2, `src/connectors/sources/oig_leie.py`): bulk-download mode, downloads the monthly LEIE exclusions CSV from HHS OIG (`/exclusions/downloadables/LEIE.csv`), parses with `csv.DictReader`, yields one dict per exclusion row; `SchemaContract` guards 11 key columns (R6 drift guard); empty-string NPI is valid for pre-NPI-era exclusions; `_parse_csv_text()` maps empty/broken responses to `SourceUnavailableError`. Built + contract-tested against stubbed transports only — no network. API spot-check deferred. DECISIONS.md Entry 016. 12 tests. **Next: 2-B.3 SAM.gov Exclusions (F3).**
+**Phase 2-B IN PROGRESS** -- Federal Source Adapters (C10), built on the C9 framework. **2-B.3 COMPLETE** -- SAM.gov Exclusions adapter (source F3, `src/connectors/sources/sam_gov.py`): paginated REST API against `https://api.sam.gov/entity-information/v3/exclusions`; `api_key` passed at construction time (not in config); pagination terminates on empty `entityData` page or when `(page+1)*size >= totalRecords`; `SchemaContract` guards two top-level keys (`exclusionDetails` and `entityRegistration` as dicts, R6 drift guard); delta-sync mode deferred; 15 tests. DECISIONS.md Entry 017. **Next: 2-B.4 CMS Care Compare (F4).**
+**2-B.2 COMPLETE** -- OIG LEIE adapter (source F2, `src/connectors/sources/oig_leie.py`): bulk-download mode, downloads the monthly LEIE exclusions CSV from HHS OIG (`/exclusions/downloadables/LEIE.csv`), parses with `csv.DictReader`, yields one dict per exclusion row; `SchemaContract` guards 11 key columns (R6 drift guard); empty-string NPI is valid for pre-NPI-era exclusions; `_parse_csv_text()` maps empty/broken responses to `SourceUnavailableError`. Built + contract-tested against stubbed transports only -- no network. API spot-check deferred. DECISIONS.md Entry 016. 12 tests.
 **2-B.1 COMPLETE** — NPPES / NPI Registry adapter (source F1, `src/connectors/sources/nppes.py`): API-lookup mode against the public CMS NPPES API (`/api/?version=2.1`, paginated via `skip`), a validated `NppesQuery`, a `SchemaContract` over `{number, enumeration_type, basic, addresses, taxonomies}` (R6 guard), and NPPES's HTTP-200-with-`Errors` failure mode mapped to a non-retryable error. Concrete adapters live in `src/connectors/sources/`. Built + contract-tested against stubbed transports only — **no network**; live ingestion against NPPES is a deploy-time action governed by the Phase 0 legal gate (F1 is T1/L0 open-data). Bulk-download mode deferred. DECISIONS.md Entry 015. 14 tests.
 **Phase 2-A COMPLETE** — Source Connector Framework (`src/connectors/`, component C9): the async-first library every source adapter (C10) builds on — `SourceConnector` ABC, `ConnectorConfig`, error taxonomy, in-house retry/backoff, client-side throttling, a `SchemaContract` runtime drift guard (risk R6), and a reusable `assert_connector_contract` test harness. Output is a `RawRecord` (pre-normalization; C11 is Phase 2-D) + a `SourceHealthRecord` per run. 21 tests (sync, via `asyncio.run` — no pytest-asyncio). Framework only — no live source fetched (legal gate governs the C10 adapters). DECISIONS.md Entry 014. Phase 2-B (Federal Source Adapters) is next.
 **Phase 1-I COMPLETE** — Audit Ledger Service (`src/backend/audit_service/`, component C5-audit): the append-only, hash-chained ledger that replaces QLDB (Entry 005). `ledger.py` assigns `prev_event_hash`/`event_hash` per `(target_type, target_id)` chain, appends immutably, and verifies by recomputation (detects altered contents and removed/reordered events); FastAPI surface for append/chain/verify/checkpoint; 15 behavior tests; runs via `make run-audit`. Deploys to the `workers` namespace (internal-only ClusterIP, NetworkPolicy baseline); Aurora-only (S3 WORM = Phase 4-F). DECISIONS.md Entry 013. **Phase 1 foundations complete.**
@@ -62,7 +63,7 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-H | OPA Baseline (C2 — policy bundle, sidecar, NetworkPolicies) | ✅ Complete |
 | 1-I | Audit Ledger Service (C5-audit — append-only, hash-chained) | ✅ Complete |
 | 2-A | Source Connector Framework (C9 — base classes, retry/throttle, contract testing) | ✅ Complete |
-| 2-B | Federal Source Adapters (NPPES, OIG, SAM.gov) | 🚧 In progress (2-B.1 NPPES ✅, 2-B.2 OIG LEIE ✅) |
+| 2-B | Federal Source Adapters (NPPES, OIG, SAM.gov) | 🚧 In progress (2-B.1 NPPES ✅, 2-B.2 OIG LEIE ✅, 2-B.3 SAM.gov ✅) |
 
 ---
 
@@ -198,8 +199,10 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/connectors/sources/` | **Concrete source adapters (C10)** — one module per source; legal-gate notice + F1/F2/F3 inventory in `__init__.py` |
 | `src/connectors/sources/nppes.py` | **NPPES / NPI adapter (F1, 2-B.1)** — `NppesConnector` API-lookup + `NppesQuery` + `nppes_config()` |
 | `tests/connectors/test_nppes.py` | 14 NPPES tests (query validation, pagination via skip, schema drift, Errors-array/non-JSON failure) |
-| `src/connectors/sources/oig_leie.py` | **OIG LEIE adapter (F2, 2-B.2)** — `OigLeieConnector` bulk CSV + `oig_leie_config()`; empty-NPI-era rows handled |
+| `src/connectors/sources/oig_leie.py` | **OIG LEIE adapter (F2, 2-B.2)** -- `OigLeieConnector` bulk CSV + `oig_leie_config()`; empty-NPI-era rows handled |
 | `tests/connectors/test_oig_leie.py` | 12 OIG LEIE tests (identity, contract harness, CSV parsing, schema drift, empty/broken/503 failure modes) |
+| `src/connectors/sources/sam_gov.py` | **SAM.gov Exclusions adapter (F3, 2-B.3)** -- `SamGovConnector` paginated REST API + `sam_gov_config()`; api_key at construction; two-dict contract |
+| `tests/connectors/test_sam_gov.py` | 15 SAM.gov tests (identity, contract harness, pagination stop modes, schema drift x3, non-JSON/503/401 failure modes) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -216,11 +219,11 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 2-B.3:** SAM.gov Exclusions adapter (source F3) — federal debarment list. Keyed REST API (free GSA API key), CC0/public domain. Subclass `SourceConnector` (`IntegrationMethod.REST_API` or `BULK_DOWNLOAD` per SAM.gov API design), declare a `SchemaContract`, ship an `assert_connector_contract` test, mirror the F1/F2 layout in `src/connectors/sources/`. T1/L0 open-data; **live ingestion stays governed by the Phase 0 legal gate** — build + contract-test against stubbed transports only.
+**Phase 2-B.4:** CMS Care Compare adapter (source F4) -- Medicare participation, quality measures, hospital affiliations. CC0, `data.cms.gov` REST API. Build order mirrors F1/F3 (REST_API, paginated). T1/L0 open-data; live ingestion stays governed by the Phase 0 legal gate.
 
-**Phase 2-B.1/2-B.2 adapters + the 2-A framework validate locally (no network — transports stubbed):**
+**Phase 2-B.1/2-B.2/2-B.3 adapters + the 2-A framework validate locally (no network -- transports stubbed):**
 ```bash
-make connectors-test                              # or: PYTHONPATH=src pytest tests/connectors/ -v  (47 tests: 21 framework + 14 nppes + 12 oig-leie)
+make connectors-test                              # or: PYTHONPATH=src pytest tests/connectors/ -v  (62 tests: 21 framework + 14 nppes + 12 oig-leie + 15 sam-gov)
 ```
 
 **Phase 1-I audit service validates locally (no DB/cluster needed):**
