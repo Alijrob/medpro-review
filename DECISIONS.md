@@ -161,4 +161,18 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 013 — Audit Ledger Service Topology (Phase 1-I)
+
+**Date:** 2026-05-25
+**Decision:** The audit ledger service (component C5-audit) runs in the **`workers`** namespace with service account **`workers-sa`**.
+- The locked workload topology (Entry 011) has four namespaces — `api-gateway`, `identity`, `reports`, `workers` — and no dedicated `audit` namespace. The audit ledger is an internal, non-public backend writer, which fits `workers` (gateway/identity/reports are each a different concern). Reusing the existing locked IRSA avoids a unilateral change to locked 1-B infra.
+- The service is **internal only**: a ClusterIP Service, no Ingress, reached intra-cluster from the event-emitting services and gated by the `workers` NetworkPolicy baseline (default-deny + DNS + ingress from api-gateway/identity/reports/workers + metrics scrape from observability + egress to Postgres 5432, the OTel gateway, and HTTPS:443 for AWS APIs/IRSA).
+- **Scope:** Phase 1-I is **Aurora-only**. The ledger writes to the `medpro_audit` DB as the INSERT-only `medpro_audit_writer` role (migration 0003); UPDATE/DELETE are blocked by the `deny_audit_mutation` trigger + RLS. The **S3 WORM export** of the chain is Phase **4-F** ("Audit Ledger Phase 2"), so the `audit_writer` S3 IAM policy (defined but unattached in the 1-B iam module) stays unattached until then.
+- **Chain model:** hash chains are **per target** — keyed by `(target_type, target_id)` — matching the `audit_events` column semantics; checkpoints are **per target_type**, matching `audit_chain_checkpoints`. The service computes `prev_event_hash`/`event_hash` (the canonical `AuditEvent` model carries the fields + `compute_hash` but does not own the chain).
+**Reason:** Honors the locked Entry 011 topology without changing infra; keeps the audit writer's blast radius minimal (internal, INSERT-only DB role, no public route); defers the S3 layer to its planned phase.
+**Risk acknowledged:** Sharing the `workers` namespace with future async workers means the namespace-wide default-deny is opened per-service (audit-service opens only its own paths; later workers add theirs). If isolation requirements grow, a dedicated `audit` namespace can be added later via an iam `app_namespaces` change (a new decision). NetworkPolicy egress specifics (the exact Aurora DB-subnet CIDR for 5432, VPC endpoints for 443) finalize at deploy. The ledger is an in-memory shell until `AUDIT_DATABASE_URL` is wired — unverified against a live DB + RLS.
+**Locked:** Namespace + internal-only + Aurora-only scope yes; DB-subnet/VPC-endpoint CIDRs open until deploy; dedicated audit namespace deferred.
+
+---
+
 <!-- Add new entries below this line -->

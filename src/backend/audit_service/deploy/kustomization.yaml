@@ -1,0 +1,17 @@
+# =============================================================================
+# kustomization.yaml — audit-service deploy bundle (Phase 1-I)
+# =============================================================================
+# Status: NON-DEPLOYED. Applied by the `audit-service` ArgoCD Application
+# (src/gitops/argocd/workloads/audit-service.yaml) into the workers namespace.
+# All resources are namespaced (Deployment + Service + NetworkPolicies) and stay
+# within this directory's root.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: workers
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - networkpolicies.yaml

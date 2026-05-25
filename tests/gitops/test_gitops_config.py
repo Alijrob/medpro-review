@@ -479,7 +479,7 @@ class TestOpaBaseline:
     # --- delivery app ------------------------------------------------------
     def test_workloads_inventory(self):
         on_disk = {p.stem for p in (GITOPS / "argocd" / "workloads").glob("*.yaml")}
-        assert on_disk == {"api-gateway", "opa-policy"}, f"workloads drift: {on_disk}"
+        assert on_disk == {"api-gateway", "opa-policy", "audit-service"}, f"workloads drift: {on_disk}"
 
     def test_opa_policy_app(self):
         a = _load_yaml(self.OPA_APP)
@@ -585,6 +585,89 @@ class TestOpaBaseline:
     # --- guard -------------------------------------------------------------
     def test_guard_scans_policy_bundle(self):
         assert '"src/policy"' in self.GUARD.read_text()
+
+
+# ---------------------------------------------------------------------------
+class TestAuditService:
+    """Phase 1-I: the audit-service workload app + its deploy bundle (workers ns)."""
+
+    APP = GITOPS / "argocd" / "workloads" / "audit-service.yaml"
+    DEPLOY = ROOT / "src" / "backend" / "audit_service" / "deploy"
+    GUARD = ROOT / "scripts" / "gitops-guard.sh"
+
+    def test_audit_app(self):
+        a = _load_yaml(self.APP)
+        assert a["kind"] == "Application"
+        assert a["spec"]["project"] == "workloads"
+        assert a["spec"]["destination"]["namespace"] == "workers"
+        assert a["spec"]["source"]["path"] == "src/backend/audit_service/deploy"
+        assert (ROOT / a["spec"]["source"]["path"]).is_dir()
+
+    def test_audit_namespace_is_a_workloads_destination(self):
+        proj = _load_yaml(GITOPS / "argocd" / "projects" / "workloads.yaml")
+        dest_ns = {d["namespace"] for d in proj["spec"]["destinations"]}
+        assert "workers" in dest_ns
+
+    def _deployment(self):
+        return next(
+            d for d in _load_yaml_all(self.DEPLOY / "deployment.yaml") if d["kind"] == "Deployment"
+        )
+
+    def test_deploy_runs_in_workers_with_irsa(self):
+        dep = self._deployment()
+        assert dep["metadata"]["namespace"] == "workers"
+        assert dep["spec"]["template"]["spec"]["serviceAccountName"] == "workers-sa"
+
+    def test_deploy_image_is_placeholder(self):
+        image = self._deployment()["spec"]["template"]["spec"]["containers"][0]["image"]
+        assert "PLACEHOLDER" in image, "image must stay PLACEHOLDER until built + Entry 003"
+
+    def test_service_is_clusterip_with_metrics(self):
+        svc = _load_yaml(self.DEPLOY / "service.yaml")
+        assert svc["spec"]["type"] == "ClusterIP"
+        assert "metrics" in {p["name"] for p in svc["spec"]["ports"]}
+
+    def test_deploy_kustomization_local(self):
+        k = _load_yaml(self.DEPLOY / "kustomization.yaml")
+        assert k["namespace"] == "workers"
+        for r in k["resources"]:
+            assert ".." not in r, f"deploy kustomization escapes its root: {r}"
+            assert (self.DEPLOY / r).is_file()
+
+    # --- network policies --------------------------------------------------
+    def _netpols(self):
+        return {
+            d["metadata"]["name"]: d
+            for d in _load_yaml_all(self.DEPLOY / "networkpolicies.yaml")
+            if d.get("kind") == "NetworkPolicy"
+        }
+
+    def test_default_deny_all(self):
+        np = self._netpols()["default-deny-all"]
+        assert np["spec"]["podSelector"] == {}
+        assert set(np["spec"]["policyTypes"]) == {"Ingress", "Egress"}
+
+    def test_all_netpols_in_workers_ns(self):
+        for name, np in self._netpols().items():
+            assert np["metadata"]["namespace"] == "workers", name
+
+    def test_ingress_from_event_emitting_namespaces(self):
+        np = self._netpols()["allow-audit-service-ingress"]
+        sources = {
+            sel["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
+            for rule in np["spec"]["ingress"]
+            for sel in rule.get("from", [])
+            if "namespaceSelector" in sel
+        }
+        assert {"api-gateway", "identity", "reports", "workers"} <= sources
+
+    def test_egress_allows_postgres(self):
+        np = self._netpols()["allow-audit-service-egress"]
+        ports = {p["port"] for rule in np["spec"]["egress"] for p in rule.get("ports", [])}
+        assert 5432 in ports, "audit service must reach the Aurora medpro_audit DB"
+
+    def test_guard_scans_audit_bundle(self):
+        assert '"src/backend/audit_service/deploy"' in self.GUARD.read_text()
 
 
 # ---------------------------------------------------------------------------

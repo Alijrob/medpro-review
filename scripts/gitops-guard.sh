@@ -22,6 +22,7 @@ SCAN_PATHS=(
   "src/observability"
   "src/gitops/argocd/otel"
   "src/backend/api_gateway/deploy"
+  "src/backend/audit_service/deploy"
   "src/policy"
 )
 

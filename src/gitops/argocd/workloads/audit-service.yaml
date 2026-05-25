@@ -1,0 +1,41 @@
+# =============================================================================
+# Application: audit-service   (workloads project, sync-wave 0)
+# =============================================================================
+# Phase: 1-I. Status: NON-DEPLOYED.
+# Deploys the audit ledger service (C5-audit) from its kustomize bundle into the
+# workers namespace with the IRSA service account workers-sa (DECISIONS.md Entry
+# 013). The append-only, hash-chained ledger that replaces QLDB (Entry 005); it
+# writes to the Aurora medpro_audit DB as medpro_audit_writer. Image is PLACEHOLDER
+# until built/pushed; the deploy guard blocks sync until it (and Entry 003) resolve.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: audit-service
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: workloads
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/backend/audit_service/deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: workers
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

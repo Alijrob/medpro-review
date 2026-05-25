@@ -28,7 +28,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-H COMPLETE** — OPA Baseline (component C2): policy bundle in `src/policy/` (`medpro.authz` + `medpro.redaction`, 16 `opa test` units), delivered as the `opa-policy` ConfigMap by a sync-wave -1 ArgoCD app; OPA sidecar added to the gateway pod (localhost:8181) with `OPA_ENABLED=true` flipped on in-cluster (local dev stays off); NetworkPolicy baseline for the `api-gateway` namespace (default-deny + Entry 011 cross-namespace allows). DECISIONS.md Entry 012. Phase 1-I (Audit Ledger Service) is next.
+**Phase 1-I COMPLETE** — Audit Ledger Service (`src/backend/audit_service/`, component C5-audit): the append-only, hash-chained ledger that replaces QLDB (Entry 005). `ledger.py` assigns `prev_event_hash`/`event_hash` per `(target_type, target_id)` chain, appends immutably, and verifies by recomputation (detects altered contents and removed/reordered events); FastAPI surface for append/chain/verify/checkpoint; 15 behavior tests; runs via `make run-audit`. Deploys to the `workers` namespace (internal-only ClusterIP, NetworkPolicy baseline); Aurora-only (S3 WORM = Phase 4-F). DECISIONS.md Entry 013. Phase 1 foundations complete; Phase 2-A (Source Connector Framework) is next.
+**Phase 1-H COMPLETE** — OPA Baseline (component C2): policy bundle in `src/policy/` (`medpro.authz` + `medpro.redaction`, 16 `opa test` units), delivered as the `opa-policy` ConfigMap by a sync-wave -1 ArgoCD app; OPA sidecar added to the gateway pod (localhost:8181) with `OPA_ENABLED=true` flipped on in-cluster (local dev stays off); NetworkPolicy baseline for the `api-gateway` namespace (default-deny + Entry 011 cross-namespace allows). DECISIONS.md Entry 012.
 **Phase 1-G COMPLETE** — API Gateway shell (`src/backend/api_gateway/`, component C8): FastAPI gateway that mounts the 1-F auth overlay and adds rate limiting, idempotency, request-id, security headers, and an OPA authz hook (C2 baseline). Deployable via a `workloads` ArgoCD app-of-apps into the `api-gateway` namespace (DECISIONS.md Entry 011). 15 behavior tests; runs via `make run-gateway`.
 **Phase 1-F COMPLETE** — Auth & Identity Service shell (`src/backend/auth_service/`, C7): Auth0 JWT validation (RS256/JWKS), RBAC gates, Path B permissible-use gate. `make run-backend`.
 **Phase 1-E COMPLETE** — GitOps + CI/CD skeleton: ArgoCD app-of-apps (`src/gitops/`), pinned Helm charts, sync waves, PrometheusRule parity guard, kustomize ConfigMap overlays, deploy-time PLACEHOLDER guard. Non-deployed.
@@ -56,7 +57,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-F | Auth Service Shell (C7 — Auth0 JWT validation, RBAC, Path B gate) | ✅ Complete |
 | 1-G | API Gateway Shell (C8 — auth overlay, rate limit, idempotency, OPA hook) | ✅ Complete |
 | 1-H | OPA Baseline (C2 — policy bundle, sidecar, NetworkPolicies) | ✅ Complete |
-| 1-I | Audit Ledger Service (Aurora append-only, hash-chained) | 🔄 Up next |
+| 1-I | Audit Ledger Service (C5-audit — append-only, hash-chained) | ✅ Complete |
+| 2-A | Source Connector Framework | 🔄 Up next |
 
 ---
 
@@ -83,11 +85,13 @@ The `make dev-setup` script (`scripts/dev-setup.sh`) is idempotent and installs:
 ## How to Run
 
 ```bash
-make run-backend     # auth service (FastAPI) on :8000 — OpenAPI at /docs
+make run-backend     # auth service (FastAPI)   on :8000 — OpenAPI at /docs
+make run-gateway     # API gateway (FastAPI)     on :8080 — OPA off locally (no sidecar)
+make run-audit       # audit ledger (FastAPI)    on :8001 — in-memory chain
 make run-frontend    # Next.js dev server (src/frontend/)
 ```
 
-> `make run-backend` now launches the Phase 1-F auth service shell (`backend.auth_service.app:app`). The frontend target is still a stub until Phase 2-K. Auth0 env vars are optional locally — with them blank the service boots, but token validation fails closed (401) and `/readyz` returns 503.
+> `make run-backend` launches the Phase 1-F auth service shell (`backend.auth_service.app:app`). The frontend target is still a stub until Phase 2-K. Auth0 env vars are optional locally — with them blank the service boots, but token validation fails closed (401) and `/readyz` returns 503. The gateway and audit ledger run without Auth0/OPA/DB locally (shells).
 
 ---
 
@@ -117,7 +121,7 @@ make run-frontend    # Next.js dev server (src/frontend/)
 | `DATABASE_URL` | Aurora PostgreSQL | Phase 1-B (dev: local Postgres) |
 | `REDIS_URL` | Cache / rate limiting | Phase 1-B (dev: local Redis) |
 | `OPENSEARCH_URL` | Provider search | Phase 1-B |
-| `AUDIT_LOG_TABLE` | Aurora append-only audit table name (replaces QLDB — see DECISIONS.md Entry 005) | Phase 1-I |
+| `AUDIT_DATABASE_URL` | Aurora `medpro_audit` DB (connect as `medpro_audit_writer`, INSERT-only) — replaces QLDB (Entry 005) | Phase 1-I (active in deploy) |
 | `TEMPORAL_ADDRESS` | Workflow orchestration | Phase 2-H |
 | `AWS_REGION` | AWS services | Phase 1-B |
 | `OPA_ENABLED` | Switches on the gateway's fail-closed authz hook (set `true` in-cluster; code default `false`) | Phase 1-H (active in deploy) |
@@ -177,6 +181,11 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/policy/` | **OPA policy bundle (C2)** — `authz.rego` + `redaction.rego`, `opa test` units, `opa-policy` ConfigMap kustomization |
 | `src/policy/README.md` | OPA quick-reference — packages, sidecar model, authz/redaction contracts, validate |
 | `src/gitops/argocd/workloads/opa-policy.yaml` | Delivers the policy bundle to the api-gateway namespace (sync-wave -1) |
+| `src/backend/audit_service/ledger.py` | **Audit ledger core (C5-audit)** — per-target hash chaining, append, verify, checkpoints |
+| `src/backend/audit_service/README.md` | Audit service quick-reference — endpoints, chain model, topology, run/test |
+| `src/backend/audit_service/deploy/` | kustomize Deployment + Service + NetworkPolicies (workers namespace, workers-sa) |
+| `src/gitops/argocd/workloads/audit-service.yaml` | Audit service ArgoCD child app (workers namespace) |
+| `tests/backend/test_audit_service.py` | 15 behavior tests (append/hash, chain linkage, tamper detection, checkpoints) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -193,7 +202,14 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-I:** Audit Ledger Service — the append-only, hash-chained audit trail (Aurora `medpro_audit` DB; QLDB removed, DECISIONS.md Entry 005). The migrations already exist (1-C: `audit_events` + `audit_chain_checkpoints`, the `deny_audit_mutation` trigger, RLS, the `medpro_audit_writer` INSERT-only role). 1-I builds the service shell that writes hash-chained audit rows and exposes verification, plus its kustomize bundle + ArgoCD workload app in the `identity`/`reports`/`workers`-adjacent topology.
+**Phase 2-A:** Source Connector Framework (C9) — the base classes, error handling, throttling, retry/backoff, and contract-testing harness that every source adapter (C10, Phase 2-B onward) builds on. This opens **Phase 2 (Core Identity & MVP)**; all Phase 1 foundations (schema, IaC, data, observability, GitOps, auth, gateway, OPA, audit ledger) are complete. The Phase 0 legal gate still governs anything that ingests real source data.
+
+**Phase 1-I audit service validates locally (no DB/cluster needed):**
+```bash
+PYTHONPATH=src pytest tests/backend/test_audit_service.py -v   # 15 behavior tests
+make run-audit                                    # uvicorn on :8001, /docs
+kustomize build src/backend/audit_service/deploy  # Deployment + Service + NetworkPolicies
+```
 
 **Phase 1-H OPA bundle validates locally (requires the `opa` CLI; no cluster needed):**
 ```bash

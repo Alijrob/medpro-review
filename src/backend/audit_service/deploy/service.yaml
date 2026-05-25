@@ -1,0 +1,25 @@
+# =============================================================================
+# audit-service Service (Phase 1-I). Status: NON-DEPLOYED.
+# ClusterIP — internal only, never fronted by an Ingress. The `metrics` port
+# (9464) is what the Phase 1-D ServiceMonitor scrapes; `http` (8000) is the
+# intra-cluster audit write/verify API.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-service
+  namespace: workers
+  labels:
+    app.kubernetes.io/name: audit-service
+    app.kubernetes.io/part-of: workers
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: audit-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: metrics
+      port: 9464
+      targetPort: metrics

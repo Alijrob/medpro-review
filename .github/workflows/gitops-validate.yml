@@ -59,5 +59,8 @@ jobs:
       - name: Build api-gateway workload bundle
         run: kustomize build src/backend/api_gateway/deploy
 
+      - name: Build audit-service workload bundle
+        run: kustomize build src/backend/audit_service/deploy
+
       - name: Build OPA policy ConfigMap bundle
         run: kustomize build src/policy

@@ -12,7 +12,7 @@ on:
 
 jobs:
   backend-tests:
-    name: Backend Service Tests (auth + gateway)
+    name: Backend Service Tests (auth + gateway + audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,8 @@ jobs:
       - name: Install deps
         run: pip install fastapi "uvicorn[standard]" "python-jose[cryptography]" httpx pydantic-settings email-validator pytest
 
-      # Behavior tests for both services: real ASGI apps via TestClient, RS256
-      # tokens signed in-test, JWKS fetch monkeypatched. No Auth0/network/cluster.
+      # Behavior tests for all three services: real ASGI apps via TestClient, RS256
+      # tokens signed in-test, JWKS fetch monkeypatched, audit ledger in memory.
+      # No Auth0/network/cluster/DB.
       - name: Run backend tests
         run: PYTHONPATH=src pytest tests/backend/ -v

@@ -1,0 +1,82 @@
+# =============================================================================
+# audit-service Deployment (Phase 1-I). Status: NON-DEPLOYED.
+# Namespace: workers (DECISIONS.md Entry 013 — the internal audit writer runs in
+# the workers namespace; no dedicated audit namespace in the locked Entry 011
+# topology). IRSA SA: workers-sa (provisioned by the 1-B iam module). Image + ECR
+# registry are PLACEHOLDER until built/pushed and Entry 003 resolves; the deploy
+# guard (scripts/gitops-guard.sh) blocks sync while they survive.
+#
+# Connects to the Aurora medpro_audit DB as the INSERT-only medpro_audit_writer
+# role (migration 0003) via AUDIT_DATABASE_URL (materialized by External Secrets).
+# UPDATE/DELETE are blocked by the deny_audit_mutation trigger + RLS regardless.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-service
+  namespace: workers
+  labels:
+    app.kubernetes.io/name: audit-service
+    app.kubernetes.io/part-of: workers
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit-service
+        app.kubernetes.io/part-of: workers
+    spec:
+      serviceAccountName: workers-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: audit-service
+          image: PLACEHOLDER-ECR-REGISTRY/medpro-review-audit-service:PLACEHOLDER-IMAGE-TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+            - name: metrics
+              containerPort: 9464
+          envFrom:
+            # ConfigMap/Secret materialized by External Secrets (AUDIT_DATABASE_URL,
+            # SENTRY_DSN). PLACEHOLDER paths until Entry 003.
+            - configMapRef:
+                name: audit-service-config
+                optional: true
+            - secretRef:
+                name: audit-service-secrets
+                optional: true
+          env:
+            - name: ENVIRONMENT
+              value: PLACEHOLDER-ENV
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

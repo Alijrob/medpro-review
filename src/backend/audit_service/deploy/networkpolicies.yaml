@@ -1,0 +1,127 @@
+# =============================================================================
+# networkpolicies.yaml — workers namespace network baseline (Phase 1-I)
+# =============================================================================
+# Status: NON-DEPLOYED. Zero-trust baseline for the workers namespace, which hosts
+# the audit-service (and future async workers). The default-deny is namespace-wide;
+# this bundle opens only the audit-service's own paths. Later workers add their own
+# allow policies.
+#
+# Namespaces are matched by the built-in `kubernetes.io/metadata.name` label.
+# The audit-service is internal: no Ingress object, reachable only intra-cluster
+# from the services that emit audit events.
+# =============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: workers
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: workers
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Audit writes come from the services that emit events (gateway, identity, reports,
+# and other workers). Metrics scrapes come from observability.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-audit-service-ingress
+  namespace: workers
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: audit-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: api-gateway
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: identity
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: reports
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: workers
+      ports:
+        - protocol: TCP
+          port: 8000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 9464
+---
+# Egress: the Aurora medpro_audit DB (Postgres 5432, in the VPC private DB subnets),
+# the OTel gateway for telemetry, and HTTPS:443 for AWS APIs (IRSA/STS, Secrets
+# Manager). The 5432 destination is left at RFC1918 in the baseline and tightened to
+# the exact Aurora DB-subnet CIDR (and 443 to the VPC endpoints) at deploy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-audit-service-egress
+  namespace: workers
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: audit-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
