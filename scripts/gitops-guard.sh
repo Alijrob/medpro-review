@@ -21,6 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCAN_PATHS=(
   "src/observability"
   "src/gitops/argocd/otel"
+  "src/backend/api_gateway/deploy"
 )
 
 echo "GitOps placeholder guard: scanning rendered config for PLACEHOLDER values..."

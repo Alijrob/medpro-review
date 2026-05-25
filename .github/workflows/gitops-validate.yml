@@ -55,3 +55,6 @@ jobs:
 
       - name: Build OTel gateway pipeline ConfigMap
         run: kustomize build src/observability/otel-collector
+
+      - name: Build api-gateway workload bundle
+        run: kustomize build src/backend/api_gateway/deploy

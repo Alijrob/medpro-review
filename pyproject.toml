@@ -24,6 +24,7 @@ fastapi = "^0.111"
 uvicorn = { version = "^0.30", extras = ["standard"] }
 python-jose = { version = "^3.3", extras = ["cryptography"] }
 httpx = "^0.27"
+redis = "^5.0"
 sentry-sdk = { version = "^2.3", extras = ["fastapi"] }
 opentelemetry-sdk = "^1.25"
 opentelemetry-instrumentation-fastapi = "^0.46b0"

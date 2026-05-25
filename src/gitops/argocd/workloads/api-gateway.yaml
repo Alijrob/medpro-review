@@ -1,0 +1,41 @@
+# =============================================================================
+# Application: api-gateway   (workloads project, sync-wave 0)
+# =============================================================================
+# Phase: 1-G. Status: NON-DEPLOYED.
+# Deploys the API gateway (C8) from its kustomize bundle. First application
+# service in the GitOps tree. Runs in the `api-gateway` namespace with the IRSA
+# service account api-gateway-sa (DECISIONS.md Entry 011). Image is PLACEHOLDER
+# until built/pushed; the deploy guard blocks sync until it (and Entry 003) are
+# resolved.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: workloads
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/backend/api_gateway/deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: api-gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

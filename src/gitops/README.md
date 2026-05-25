@@ -105,11 +105,26 @@ helm repo add argo https://argoproj.github.io/argo-helm
 helm install argocd argo/argo-cd -n argocd --version 7.7.5 \
   -f src/gitops/argocd/bootstrap/install-values.yaml
 
-# 2. Register the project and the root app-of-apps
+# 2. Register the projects and the platform root app-of-apps
 kubectl apply -f src/gitops/argocd/projects/platform.yaml
+kubectl apply -f src/gitops/argocd/projects/workloads.yaml
 kubectl apply -f src/gitops/argocd/bootstrap/root-app.yaml
-# ArgoCD now syncs every child in wave order.
+# ArgoCD now syncs every platform child in wave order.
+
+# 3. Once the platform is healthy, register the workloads app-of-apps
+kubectl apply -f src/gitops/argocd/bootstrap/workloads-root-app.yaml
+# Renders the application services (api-gateway, ...) under the `workloads` project.
 ```
+
+### Two app-of-apps
+
+- **platform** (`bootstrap/root-app.yaml` → `apps/`) — cluster add-ons, observability,
+  secrets. Trusted with cluster-scoped resources (CRDs, namespaces).
+- **workloads** (`bootstrap/workloads-root-app.yaml` → `workloads/`) — application
+  services in per-group namespaces (`api-gateway`, `identity`, `reports`, `workers`;
+  DECISIONS.md Entry 011). Tightly scoped: git repo only, namespaced resources only.
+  The api-gateway (C8) is the first service; its deploy bundle lives in
+  `src/backend/api_gateway/deploy/`.
 
 ### PLACEHOLDER guard
 

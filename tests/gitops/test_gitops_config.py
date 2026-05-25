@@ -357,3 +357,80 @@ class TestNoSecrets:
         akid = re.compile(r"AKIA[0-9A-Z]{16}")
         for f in self.ALL_FILES:
             assert not akid.search(f.read_text()), f"possible AWS key in {f}"
+
+
+# ---------------------------------------------------------------------------
+class TestWorkloads:
+    """Phase 1-G: workloads AppProject, api-gateway child app, deploy bundle."""
+
+    PROJECT = GITOPS / "argocd" / "projects" / "workloads.yaml"
+    APP = GITOPS / "argocd" / "workloads" / "api-gateway.yaml"
+    ROOT_APP = GITOPS / "argocd" / "bootstrap" / "workloads-root-app.yaml"
+    DEPLOY = ROOT / "src" / "backend" / "api_gateway" / "deploy"
+
+    WORKLOAD_NS = {"api-gateway", "identity", "reports", "workers"}
+
+    def test_workloads_project(self):
+        p = _load_yaml(self.PROJECT)
+        assert p["kind"] == "AppProject"
+        assert GIT_REPO_URL in p["spec"]["sourceRepos"]
+        dest_ns = {d["namespace"] for d in p["spec"]["destinations"]}
+        assert dest_ns == self.WORKLOAD_NS
+        # Workloads may only create their own Namespace at cluster scope.
+        cluster = p["spec"]["clusterResourceWhitelist"]
+        assert cluster == [{"group": "", "kind": "Namespace"}]
+
+    def test_api_gateway_app(self):
+        a = _load_yaml(self.APP)
+        assert a["kind"] == "Application"
+        assert a["spec"]["project"] == "workloads"
+        assert a["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"] == "0"
+        assert a["spec"]["destination"]["namespace"] == "api-gateway"
+        path = ROOT / a["spec"]["source"]["path"]
+        assert path.is_dir(), f"api-gateway source path missing: {a['spec']['source']['path']}"
+
+    def test_workloads_root_is_app_of_apps(self):
+        r = _load_yaml(self.ROOT_APP)
+        assert r["kind"] == "Application"
+        # The orchestration object lives in platform; the services run in workloads.
+        assert r["spec"]["project"] == "platform"
+        assert r["spec"]["source"]["path"] == "src/gitops/argocd/workloads"
+        assert (ROOT / r["spec"]["source"]["path"]).is_dir()
+
+    def test_deploy_manifests_parse(self):
+        docs = _load_yaml_all(self.DEPLOY / "deployment.yaml")
+        dep = next(d for d in docs if d["kind"] == "Deployment")
+        assert dep["metadata"]["namespace"] == "api-gateway"
+        assert dep["spec"]["template"]["spec"]["serviceAccountName"] == "api-gateway-sa"
+        labels = dep["spec"]["template"]["metadata"]["labels"]
+        assert labels["app.kubernetes.io/part-of"] == "api-gateway"
+        svc = _load_yaml(self.DEPLOY / "service.yaml")
+        assert svc["kind"] == "Service"
+        port_names = {p["name"] for p in svc["spec"]["ports"]}
+        assert "metrics" in port_names  # scraped by the 1-D ServiceMonitor
+
+    def test_deploy_image_is_placeholder(self):
+        dep = next(
+            d for d in _load_yaml_all(self.DEPLOY / "deployment.yaml") if d["kind"] == "Deployment"
+        )
+        image = dep["spec"]["template"]["spec"]["containers"][0]["image"]
+        assert "PLACEHOLDER" in image, "image must stay PLACEHOLDER until built + Entry 003"
+
+    def test_deploy_kustomization_local(self):
+        k = _load_yaml(self.DEPLOY / "kustomization.yaml")
+        for r in k["resources"]:
+            assert ".." not in r, f"deploy kustomization escapes its root: {r}"
+            assert (self.DEPLOY / r).is_file()
+
+
+# ---------------------------------------------------------------------------
+class TestServiceMonitorNamespaceReconciled:
+    """DECISIONS.md Entry 011: ServiceMonitor selects the per-group workload
+    namespaces, and the api-gateway Deployment lands in one of them."""
+
+    def test_servicemonitor_selects_workload_namespaces(self):
+        docs = _load_yaml_all(OBS / "prometheus" / "servicemonitors.yaml")
+        sm = next(d for d in docs if d.get("kind") == "ServiceMonitor")
+        names = set(sm["spec"]["namespaceSelector"]["matchNames"])
+        assert names == {"api-gateway", "identity", "reports", "workers"}
+        assert "medpro" not in names

@@ -134,4 +134,15 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 011 — Workload Namespace Topology (Phase 1-G)
+
+**Date:** 2026-05-25
+**Decision:** Application services run in **per-group Kubernetes namespaces**, not a single shared namespace. The groups come from the Phase 1-B `iam` module, which already provisions IRSA roles for `app_namespaces = ["api-gateway", "identity", "reports", "workers", "observability"]` and trusts the service account `${namespace}/${namespace}-sa`. So: the api-gateway runs in namespace **`api-gateway`** with service account **`api-gateway-sa`**; identity-resolution services in `identity`; report/search in `reports`; async workers in `workers`.
+**Reconciliation:** The Phase 1-D ServiceMonitor (`src/observability/prometheus/servicemonitors.yaml`) had `namespaceSelector.matchNames: ["medpro"]`, which assumed a single namespace and predated this lock. It is updated to select the four workload namespaces so Prometheus actually scrapes the services. (The `matchExpressions` over the 12 services is unchanged; 1-D tests still pass.)
+**Reason:** The IRSA trust policy is the authoritative, already-locked constraint (it's infra, Phase 1-B). Per-namespace isolation also gives cleaner NetworkPolicy and RBAC boundaries than one flat namespace. The `medpro` single-namespace assumption was the stale element.
+**Risk acknowledged:** Cross-namespace service discovery (e.g. gateway → report service) uses fully-qualified DNS (`svc.<ns>.svc.cluster.local`); NetworkPolicies must allow the required cross-namespace paths. Tracked for Phase 1-H (OPA/NetworkPolicy baseline).
+**Locked:** Yes.
+
+---
+
 <!-- Add new entries below this line -->

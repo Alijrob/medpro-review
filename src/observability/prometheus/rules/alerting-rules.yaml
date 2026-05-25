@@ -36,7 +36,7 @@ groups:
           description: "p99 request latency is {{ $value }}s over 5m (threshold 2s)."
 
       - alert: ServiceInstanceDown
-        expr: up{namespace="medpro"} == 0
+        expr: up{namespace=~"api-gateway|identity|reports|workers"} == 0
         for: 5m
         labels:
           severity: page

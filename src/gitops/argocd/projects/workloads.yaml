@@ -1,0 +1,42 @@
+# =============================================================================
+# workloads AppProject
+# =============================================================================
+# Phase: 1-G. Status: NON-DEPLOYED.
+#
+# Scopes the application services (api-gateway and, from Phase 2, the rest). Much
+# tighter than the `platform` project: only the medpro-review git repo as a
+# source, only the per-group workload namespaces as destinations (DECISIONS.md
+# Entry 011), and only namespaced resources — workloads may NOT manage cluster
+# resources (the lone exception is creating their own Namespace).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workloads
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: medpro-review application services (api-gateway, identity, reports, workers)
+
+  sourceRepos:
+    - https://github.com/Alijrob/medpro-review.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: api-gateway
+    - server: https://kubernetes.default.svc
+      namespace: identity
+    - server: https://kubernetes.default.svc
+      namespace: reports
+    - server: https://kubernetes.default.svc
+      namespace: workers
+
+  # Workloads create only their own namespace at the cluster scope.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

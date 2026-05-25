@@ -1,0 +1,45 @@
+# =============================================================================
+# workloads-root-app.yaml — the workloads app-of-apps root
+# =============================================================================
+# Phase: 1-G. Status: NON-DEPLOYED.
+#
+# Mirrors root-app.yaml but for application services: watches
+# src/gitops/argocd/workloads/ and renders one child Application per service.
+# Applied after the platform root (the workloads depend on the cluster add-ons,
+# observability, and CRDs that the platform app-of-apps installs).
+#
+# This orchestration object lives in `platform` (it creates Application resources
+# in the argocd namespace); the services it points at run under the tighter
+# `workloads` project.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: medpro-workloads-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/gitops/argocd/workloads
+    directory:
+      recurse: false
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

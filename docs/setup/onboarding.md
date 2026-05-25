@@ -28,8 +28,9 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-F COMPLETE** — Auth & Identity Service shell (`src/backend/auth_service/`, component C7): FastAPI app that validates Auth0 JWTs (RS256 via JWKS), exposes the current identity, RBAC role/permission gates, and the Path B permissible-use certification gate. 17 behavior tests (real ASGI app, in-test signed tokens, mocked JWKS). Runs via `make run-backend`. Phase 1-G (API Gateway Shell, C8) is next.
-**Phase 1-E COMPLETE** — GitOps + CI/CD skeleton: ArgoCD app-of-apps (`src/gitops/`) over the 1-B IaC + 1-D observability config, pinned Helm charts, sync waves (0-5), PrometheusRule parity guard, kustomize ConfigMap overlays, deploy-time PLACEHOLDER guard. Non-deployed.
+**Phase 1-G COMPLETE** — API Gateway shell (`src/backend/api_gateway/`, component C8): FastAPI gateway that mounts the 1-F auth overlay and adds rate limiting, idempotency, request-id, security headers, and an OPA authz hook (C2 baseline). Deployable via a `workloads` ArgoCD app-of-apps into the `api-gateway` namespace (DECISIONS.md Entry 011). 15 behavior tests; runs via `make run-gateway`. Phase 1-H (OPA Baseline) is next.
+**Phase 1-F COMPLETE** — Auth & Identity Service shell (`src/backend/auth_service/`, C7): Auth0 JWT validation (RS256/JWKS), RBAC gates, Path B permissible-use gate. `make run-backend`.
+**Phase 1-E COMPLETE** — GitOps + CI/CD skeleton: ArgoCD app-of-apps (`src/gitops/`), pinned Helm charts, sync waves, PrometheusRule parity guard, kustomize ConfigMap overlays, deploy-time PLACEHOLDER guard. Non-deployed.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
 **Legal gate still active** — FCRA determination pending. IaC skeletons, schema, data layer, observability, and GitOps config are safe to build; no running services until gate closes.
 **IaC + observability + GitOps are non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply` or any ArgoCD sync.
@@ -52,7 +53,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-D | Observability Stack Config (OTel, Prometheus, Loki, Tempo, Grafana, Sentry) | ✅ Complete |
 | 1-E | GitOps + CI/CD Skeleton (ArgoCD app-of-apps, sync waves, pinned charts) | ✅ Complete |
 | 1-F | Auth Service Shell (C7 — Auth0 JWT validation, RBAC, Path B gate) | ✅ Complete |
-| 1-G | API Gateway Shell | 🔄 Up next |
+| 1-G | API Gateway Shell (C8 — auth overlay, rate limit, idempotency, OPA hook) | ✅ Complete |
+| 1-H | OPA Baseline | 🔄 Up next |
 
 ---
 
@@ -163,7 +165,12 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/backend/auth_service/README.md` | **Auth service quick-reference** — endpoints, token model, Path B gate, run/test |
 | `src/backend/auth_service/dependencies.py` | The reusable auth overlay — `get_current_user`, `require_roles/permissions`, Path B gate |
 | `src/backend/auth_service/security.py` | Auth0 JWT verification (JWKS cache, RS256, iss/aud/exp) |
-| `tests/backend/test_auth_service.py` | 17 behavior tests (real ASGI app, signed tokens, mocked JWKS) |
+| `src/backend/api_gateway/README.md` | **API gateway quick-reference** — concerns, endpoints, topology, run/test |
+| `src/backend/api_gateway/middleware.py` | Rate limit, idempotency, request-id, security headers |
+| `src/backend/api_gateway/opa.py` | OPA authz hook (C2 baseline) — `require_authz(action, resource)` |
+| `src/backend/api_gateway/deploy/` | kustomize Deployment + Service (api-gateway namespace, IRSA SA) |
+| `src/gitops/argocd/workloads/` | Workload ArgoCD child apps (api-gateway); `workloads` AppProject |
+| `tests/backend/test_api_gateway.py` | 15 behavior tests (auth chain, rate limit, idempotency, OPA) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -180,14 +187,16 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-G:** API Gateway Shell (C8) — the FastAPI API gateway that mounts the Phase 1-F auth overlay (`backend.auth_service.dependencies`), adds routing, idempotency, rate limiting, and the OPA authz hook (C2 baseline). This is the first service that gets containerized + an ArgoCD child Application (workload-scoped AppProject) and an ECR repo (`api-gateway`).
+**Phase 1-H:** OPA Baseline (C2) — stand up the `opa-sidecar` with a baseline policy bundle (API authz, rate-limit policy, privacy redaction such as suppressing physician home address from consumer output), wire the gateway's `require_authz` hook to it (`opa_enabled=true`), and add NetworkPolicies for the cross-namespace paths Entry 011 introduced. The gateway's OPA client + fail-closed behavior already exist (Phase 1-G); 1-H provides the policies and the sidecar deployment.
 
-**Phase 1-F auth service validates locally (no Auth0/network needed):**
+**Phase 1-F/1-G backend validates locally (no Auth0/network/cluster needed):**
 ```bash
 PYTHONPATH=src pytest tests/backend/ -v
-# Expected: 17 passed
+# Expected: 32 passed (17 auth + 15 gateway)
 
-make run-backend   # uvicorn on :8000, OpenAPI at /docs
+make run-backend   # auth service  — uvicorn on :8000
+make run-gateway   # API gateway   — uvicorn on :8080
+kustomize build src/backend/api_gateway/deploy   # Deployment + Service render
 ```
 
 **Phase 1-E GitOps config validates locally (no cluster needed):**

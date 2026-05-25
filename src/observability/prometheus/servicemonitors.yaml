@@ -23,7 +23,8 @@ metadata:
     release: kube-prometheus-stack
 spec:
   namespaceSelector:
-    matchNames: ["medpro"]
+    # Per-group workload namespaces (DECISIONS.md Entry 011). Was ["medpro"].
+    matchNames: ["api-gateway", "identity", "reports", "workers"]
   selector:
     matchExpressions:
       - key: app.kubernetes.io/part-of

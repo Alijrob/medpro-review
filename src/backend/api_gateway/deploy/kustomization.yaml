@@ -1,0 +1,15 @@
+# =============================================================================
+# kustomization.yaml — api-gateway deploy bundle (Phase 1-G)
+# =============================================================================
+# Status: NON-DEPLOYED. Applied by the `api-gateway` ArgoCD Application
+# (src/gitops/argocd/workloads/api-gateway.yaml). All resources are namespaced
+# (Deployment + Service) and stay within this directory's root.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: api-gateway
+
+resources:
+  - deployment.yaml
+  - service.yaml
