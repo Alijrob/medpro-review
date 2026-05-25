@@ -192,4 +192,19 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 015 — NPPES Adapter Mode + Federal Adapter Layout (Phase 2-B.1)
+
+**Date:** 2026-05-25
+**Decision:** The first C10 adapter — NPPES / NPI Registry (source F1) — and the layout the rest of the federal batch follows:
+- **Adapters live in `src/connectors/sources/`** (one module per source), separate from the C9 framework package root. The `sources` package `__init__` carries the legal-gate notice and the F1/F2/F3 build inventory.
+- **NPPES builds the API-lookup mode first** (`REST_API`): a per-provider query against the public CMS NPPES API (`/api/?version=2.1`), paginated via `skip` (page cap 200, skip cap 1000). This is the mode the report pipeline uses on-demand. The **monthly bulk-download** mode (the full dissemination file) is a deferred follow-on adapter — the Source Priority Matrix lists F1 as "Bulk-DL monthly + API lookup", but the on-demand lookup is the MVP-critical path and the natural first build on the framework's `request()` HTTP helper.
+- **Query is a validated value object** (`NppesQuery`): requires at least one of `number` / `last_name` / `organization_name` (NPPES rejects a version-only query); `to_params()` emits only the set fields.
+- **SchemaContract guards `{number, enumeration_type, basic, addresses, taxonomies}`** with type checks on the latter four — the R6 drift guard for F1.
+- **NPPES's HTTP-200-with-`Errors` failure mode** (it reports bad queries as a 200 carrying an `Errors` array, not a 4xx) is mapped to a non-retryable `PermanentError` so a rejected query surfaces as a failed run rather than a silent zero-record success.
+**Reason:** Keeps the framework package framework-only (Entry 014) while giving the federal batch a predictable home. API-lookup-first matches how reports consume F1 (per-NPI) and is fully contract-testable against the C9 harness with a stubbed transport.
+**Legal gate:** Built and tested against **stubbed transports only — no network I/O**. Live ingestion against the NPPES endpoint is a deploy-time action governed by the Phase 0 FCRA determination (F1 is T1/L0 open-data, the lowest-risk tier).
+**Locked:** Adapter layout (`src/connectors/sources/`), NPPES API-lookup-first, `NppesQuery` contract. Bulk-download mode + the Redis-backed global rate limiter remain deferred.
+
+---
+
 <!-- Add new entries below this line -->

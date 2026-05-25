@@ -23,15 +23,30 @@ Async-first (`httpx`), per the locked stack. Retry/backoff is in-house (no `tena
 
 ---
 
+## Built adapters (`sources/`)
+
+Concrete C10 adapters live in `src/connectors/sources/` (one module per source). Each
+subclasses `SourceConnector`, declares a `SchemaContract`, and is contract-tested against
+a stubbed transport. **Live ingestion is governed by the Phase 0 legal gate** — these are
+built and tested with no network I/O.
+
+| Source | Module | Mode | Phase |
+|--------|--------|------|-------|
+| F1 — NPPES / NPI Registry | `sources/nppes.py` | API lookup (paginated via `skip`); bulk-DL deferred | 2-B.1 ✅ |
+| F2 — OIG LEIE | _pending_ | monthly bulk CSV + API spot-check | 2-B.2 |
+| F3 — SAM.gov Exclusions | _pending_ | keyed REST API | 2-B.3 |
+
 ## Writing an adapter (C10, Phase 2-B)
 
 ```python
 class NppesConnector(SourceConnector):
-    contract = SchemaContract(required_fields=frozenset({"number", "basic"}))
+    contract = SchemaContract(
+        required_fields=frozenset({"number", "enumeration_type", "basic", "addresses", "taxonomies"}),
+    )
 
     async def fetch_raw(self):
-        resp = await self.request("GET", "/api/?version=2.1&limit=200")
-        for item in resp.json()["results"]:
+        resp = await self.request("GET", "/api/", params={"version": "2.1", "limit": 200})
+        for item in resp.json().get("results", []):
             yield item
 ```
 
