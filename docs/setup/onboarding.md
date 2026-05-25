@@ -28,7 +28,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-E COMPLETE** — GitOps + CI/CD skeleton shipped: ArgoCD app-of-apps (`src/gitops/`) over the 1-B IaC + 1-D observability config, pinned Helm charts (`charts-lock.yaml`), deploy order as sync waves (0-5), PrometheusRule wrappers with a parity guard, kustomize overlays for the Grafana/OTel ConfigMaps, and a deploy-time PLACEHOLDER guard. Non-deployed. Phase 1-F (Auth Service Shell) is next.
+**Phase 1-F COMPLETE** — Auth & Identity Service shell (`src/backend/auth_service/`, component C7): FastAPI app that validates Auth0 JWTs (RS256 via JWKS), exposes the current identity, RBAC role/permission gates, and the Path B permissible-use certification gate. 17 behavior tests (real ASGI app, in-test signed tokens, mocked JWKS). Runs via `make run-backend`. Phase 1-G (API Gateway Shell, C8) is next.
+**Phase 1-E COMPLETE** — GitOps + CI/CD skeleton: ArgoCD app-of-apps (`src/gitops/`) over the 1-B IaC + 1-D observability config, pinned Helm charts, sync waves (0-5), PrometheusRule parity guard, kustomize ConfigMap overlays, deploy-time PLACEHOLDER guard. Non-deployed.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
 **Legal gate still active** — FCRA determination pending. IaC skeletons, schema, data layer, observability, and GitOps config are safe to build; no running services until gate closes.
 **IaC + observability + GitOps are non-deployed** — DECISIONS.md Entry 003 (AWS account/region) must be resolved before `terragrunt apply` or any ArgoCD sync.
@@ -50,7 +51,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-C | Data Store Baseline (migrations, OpenSearch, Redis, docker-compose) | ✅ Complete |
 | 1-D | Observability Stack Config (OTel, Prometheus, Loki, Tempo, Grafana, Sentry) | ✅ Complete |
 | 1-E | GitOps + CI/CD Skeleton (ArgoCD app-of-apps, sync waves, pinned charts) | ✅ Complete |
-| 1-F | Auth Service Shell | 🔄 Up next |
+| 1-F | Auth Service Shell (C7 — Auth0 JWT validation, RBAC, Path B gate) | ✅ Complete |
+| 1-G | API Gateway Shell | 🔄 Up next |
 
 ---
 
@@ -77,11 +79,11 @@ The `make dev-setup` script (`scripts/dev-setup.sh`) is idempotent and installs:
 ## How to Run
 
 ```bash
-make run-backend     # FastAPI dev server (src/backend/)
+make run-backend     # auth service (FastAPI) on :8000 — OpenAPI at /docs
 make run-frontend    # Next.js dev server (src/frontend/)
 ```
 
-> Note: Neither service exists yet. These targets will be populated starting Phase 1-F (Auth Service) and Phase 2-K (Frontend Phase 1).
+> `make run-backend` now launches the Phase 1-F auth service shell (`backend.auth_service.app:app`). The frontend target is still a stub until Phase 2-K. Auth0 env vars are optional locally — with them blank the service boots, but token validation fails closed (401) and `/readyz` returns 503.
 
 ---
 
@@ -97,13 +99,15 @@ make run-frontend    # Next.js dev server (src/frontend/)
 
 ## Required Environment Variables
 
-> None active yet. Variables will be populated as services are built.
+> Auth service vars are active as of Phase 1-F (blank-safe locally). The rest populate as services are built.
 
 | Variable | Purpose | Phase Set |
 |----------|---------|-----------|
-| `AUTH0_DOMAIN` or `OKTA_DOMAIN` | IDaaS auth | Phase 1-F |
-| `AUTH0_CLIENT_ID` | Frontend auth | Phase 1-F |
-| `AUTH0_CLIENT_SECRET` | Backend JWT validation | Phase 1-F |
+| `AUTH0_DOMAIN` | Auth0 tenant domain (e.g. `medpro.us.auth0.com`) — JWKS + issuer | Phase 1-F (active) |
+| `AUTH0_AUDIENCE` | Auth0 API identifier (the `aud` claim validated) | Phase 1-F (active) |
+| `AUTH0_ISSUER` | Optional issuer override (defaults to `https://{AUTH0_DOMAIN}/`) | Phase 1-F (active) |
+| `AUTH0_CLIENT_ID` | Frontend auth | Phase 2-K |
+| `AUTH0_CLIENT_SECRET` | Server-side OAuth flows (if needed) | Phase 2-K |
 | `STRIPE_SECRET_KEY` | Payment processing | Phase 2-J |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook validation | Phase 2-J |
 | `DATABASE_URL` | Aurora PostgreSQL | Phase 1-B (dev: local Postgres) |
@@ -156,6 +160,10 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/gitops/argocd/monitoring/` | PrometheusRule CRD wrappers (parity-tested against 1-D rules) |
 | `scripts/gitops-guard.sh` | Deploy-time PLACEHOLDER guard — blocks ArgoCD sync until Entry 003 |
 | `tests/gitops/test_gitops_config.py` | 138-test suite — run with `make gitops-validate` |
+| `src/backend/auth_service/README.md` | **Auth service quick-reference** — endpoints, token model, Path B gate, run/test |
+| `src/backend/auth_service/dependencies.py` | The reusable auth overlay — `get_current_user`, `require_roles/permissions`, Path B gate |
+| `src/backend/auth_service/security.py` | Auth0 JWT verification (JWKS cache, RS256, iss/aud/exp) |
+| `tests/backend/test_auth_service.py` | 17 behavior tests (real ASGI app, signed tokens, mocked JWKS) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -172,15 +180,21 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-F:** Auth Service Shell — the first application service (FastAPI auth overlay on Auth0/Okta). Blocked on DECISIONS.md Entry 002 (Auth0 vs. Okta) and Entry 009 (Sentry hosting), both of which must be locked before this phase. Will be the first child Application added to the GitOps app-of-apps in a workload-scoped AppProject.
+**Phase 1-G:** API Gateway Shell (C8) — the FastAPI API gateway that mounts the Phase 1-F auth overlay (`backend.auth_service.dependencies`), adds routing, idempotency, rate limiting, and the OPA authz hook (C2 baseline). This is the first service that gets containerized + an ArgoCD child Application (workload-scoped AppProject) and an ECR repo (`api-gateway`).
+
+**Phase 1-F auth service validates locally (no Auth0/network needed):**
+```bash
+PYTHONPATH=src pytest tests/backend/ -v
+# Expected: 17 passed
+
+make run-backend   # uvicorn on :8000, OpenAPI at /docs
+```
 
 **Phase 1-E GitOps config validates locally (no cluster needed):**
 ```bash
 make gitops-validate
 # Expected: 138 passed
-
-# The two kustomize overlays render their ConfigMaps:
-kustomize build src/observability/grafana
+kustomize build src/observability/grafana          # ConfigMaps render
 kustomize build src/observability/otel-collector
 ```
 

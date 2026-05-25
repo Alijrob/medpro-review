@@ -8,16 +8,22 @@ packages = [
     { include = "schema", from = "src" },
     { include = "data", from = "src" },
     { include = "observability", from = "src" },
+    { include = "backend", from = "src" },
 ]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 pydantic = "^2.7"
 pydantic-settings = "^2.3"
+email-validator = "^2.1"
 alembic = "^1.13"
 sqlalchemy = "^2.0"
 psycopg2-binary = "^2.9"
 structlog = "^24.1"
+fastapi = "^0.111"
+uvicorn = { version = "^0.30", extras = ["standard"] }
+python-jose = { version = "^3.3", extras = ["cryptography"] }
+httpx = "^0.27"
 sentry-sdk = { version = "^2.3", extras = ["fastapi"] }
 opentelemetry-sdk = "^1.25"
 opentelemetry-instrumentation-fastapi = "^0.46b0"

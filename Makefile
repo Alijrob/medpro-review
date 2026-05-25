@@ -35,7 +35,9 @@ dev-setup:
 	bash scripts/dev-setup.sh
 
 run-backend:
-	@echo "[Phase 1-F not yet built] Backend service not available yet."
+	@echo "Starting auth service (Phase 1-F shell) on http://localhost:8000 ..."
+	@echo "Try: curl localhost:8000/healthz  |  docs at /docs"
+	PYTHONPATH=src uvicorn backend.auth_service.app:app --reload --port 8000
 
 run-frontend:
 	@echo "[Phase 2-K not yet built] Frontend not available yet."
