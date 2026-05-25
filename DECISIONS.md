@@ -371,3 +371,30 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 - Active probe mode (C24 Phase 2 -- Phase 3-K): the MVP only ingests records from adapter push; Phase 3-K adds scheduled pull probes that run adapters on a cron.
 
 **Locked:** FastAPI shell, two-table history model, HealthStore/SourceHealthMonitor separation, 8 P1 connector sources, alert types + thresholds as above, `make run-monitor` on port 8002.
+
+---
+
+## Entry 025 -- Normalization Layer Design (Phase 2-D, C11)
+
+**Date:** 2026-05-25
+**Decision:** Normalization Layer (C11) ships as a pure transformation library (`src/normalizers/`) following the same library pattern as the connector framework (src/connectors/). No deployed service, no network I/O, no state. Normalizers run as part of the ingest pipeline; later they become Temporal activities (C15).
+
+Key design choices:
+
+- **Library pattern.** `src/normalizers/` is a pure Python package: `SourceNormalizer` ABC + `NormalizationError` in `base.py`, registry in `registry.py`, concrete normalizers in `sources/`. Importing `normalizers.sources` triggers all `@register` decorations.
+- **`normalize(raw, *, entity_npi=None)` signature.** Optional `entity_npi` keyword handles the NPI-routing split: F1/F4/I1/I2 extract NPI from raw and ignore the parameter; F2 (OIG LEIE) tries raw["NPI"] then falls back; F3/A1/A2 require the caller to supply the NPI (no NPI in raw). `_require_npi()` raises NormalizationError if the final NPI is missing or invalid.
+- **`source_record_id` set here for all 8 P1 sources.** Deferred in every C10 adapter (DECISIONS.md Entries 015-023). C11 normalizers set it: NPI for F1/F4/I1/I2/F2, UEI for F3, PMID for A1, NCT ID for A2. This is the first point in the pipeline where `DataProvenance.source_record_id` is populated.
+- **`_parse_date()` handles 6 formats.** ISO (YYYY-MM-DD), US slash (MM/DD/YYYY), US dash (MM-DD-YYYY), year+abbr-month ("2022 Jan"), year-month ("2022-01"), year-only ("2022"). Returns None for blank/unparseable inputs; normalizers raise NormalizationError for required date fields.
+- **I4 taxonomy crosswalk applied in the F1 normalizer.** `get_specialty_group(nppes_record: NppesRecord) -> str | None` is exported from `normalizers.sources.f1_nppes`. C13 (Entity Linking & Merge) calls this when building the CanonicalProviderProfile. NppesRecord schema unchanged (no specialty_group field added -- profile is the right home for the derived string).
+- **8 normalizers registered (I4 excluded).** F1, F2, F3, F4, I1, I2, A1, A2. I4 (NPPES Specialty Crosswalk) is a pure helper module with no SourceConnector and no normalizer -- its output is derived from F1 records, not from a raw fetch. Consistent with the C24 Source Health Monitor P1 inventory (Entry 024).
+- **Address/TaxonomyCode parsing is defensive.** Invalid Pydantic fields (bad state code, short ZIP, non-conformant taxonomy code) are skipped rather than raising; a single bad address does not fail the whole record. Required fields (NPI, exclusion date, NCT ID) do raise NormalizationError.
+- **`normalize()` top-level dispatch.** `normalizers.normalize(raw, entity_npi=...)` wraps `get_normalizer(raw.source_id).normalize(raw, ...)` for ergonomic single-call use by the pipeline.
+- **`make normalizers-test`.** New Makefile target. `.github/workflows/normalizers-validate.yml` CI. `normalizers` package added to pyproject.toml.
+
+**Deferred / open:**
+- DB write path: normalized records are produced as Pydantic objects; persistence to `normalized_records` Aurora table (migration 0001) lands when the ingest pipeline (C15 Temporal) is wired in Phase 2-E/2-H.
+- A1/A2 author disambiguation: `author_position` is None in the MVP; C13 resolves author identity via NPI + name/affiliation matching.
+- F2 name-match path for pre-NPI-era exclusions (empty raw["NPI"], no entity_npi): normalizer raises NormalizationError; deferred to Phase 3 identity resolution.
+- Address normalizer hardening: postal_code 9-digit long-form (13 chars including country prefix) is handled by _clean_zip; edge cases in NPPES international addresses are out of scope.
+
+**Locked:** library pattern, 8-normalizer registry, normalize() signature with optional entity_npi, source_record_id set at C11, I4 crosswalk via get_specialty_group() helper, _parse_date() for 6 formats.

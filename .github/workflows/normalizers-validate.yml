@@ -1,0 +1,35 @@
+name: Normalizers Validate
+
+on:
+  push:
+    paths:
+      - "src/normalizers/**"
+      - "tests/normalizers/**"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/normalizers/**"
+      - "tests/normalizers/**"
+      - "pyproject.toml"
+
+jobs:
+  normalizers-test:
+    name: Normalization Layer Tests (Phase 2-D)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --no-interaction --no-root
+
+      - name: Run normalizer tests
+        run: |
+          PYTHONPATH=src poetry run pytest tests/normalizers/ -v --tb=short
