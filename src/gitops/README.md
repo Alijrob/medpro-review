@@ -124,14 +124,18 @@ kubectl apply -f src/gitops/argocd/bootstrap/workloads-root-app.yaml
   services in per-group namespaces (`api-gateway`, `identity`, `reports`, `workers`;
   DECISIONS.md Entry 011). Tightly scoped: git repo only, namespaced resources only.
   The api-gateway (C8) is the first service; its deploy bundle lives in
-  `src/backend/api_gateway/deploy/`.
+  `src/backend/api_gateway/deploy/`. The **opa-policy** app (sync-wave -1) delivers the
+  OPA policy bundle (`src/policy`) as the `opa-policy` ConfigMap into the `api-gateway`
+  namespace before the gateway pod (wave 0) starts — the gateway's OPA sidecar mounts it
+  (Phase 1-H; DECISIONS.md Entry 012).
 
 ### PLACEHOLDER guard
 
 `scripts/gitops-guard.sh` (`make gitops-guard`) scans the config ArgoCD renders
-(`src/observability/`, `src/gitops/argocd/otel/`) and blocks deploy while any
-PLACEHOLDER survives. Resolve DECISIONS.md Entry 003 first. CI does **not** run the
-guard — PLACEHOLDERs are expected in this non-deployed phase.
+(`src/observability/`, `src/gitops/argocd/otel/`, `src/backend/api_gateway/deploy/`,
+`src/policy/`) and blocks deploy while any PLACEHOLDER survives. Resolve DECISIONS.md
+Entry 003 first. CI does **not** run the guard — PLACEHOLDERs are expected in this
+non-deployed phase.
 
 ---
 

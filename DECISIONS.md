@@ -145,4 +145,20 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 012 — OPA Baseline Topology (Phase 1-H)
+
+**Date:** 2026-05-25
+**Decision:** Component C2 (OPA) is deployed as a **per-service sidecar**, starting with the api-gateway. The policy bundle is authored once in `src/policy/` (packages `medpro.authz` + `medpro.redaction`) and delivered as the `opa-policy` ConfigMap into a service's namespace by a dedicated ArgoCD app.
+- **Decision API binds to `127.0.0.1:8181`** (same-pod only) — never exposed on the Service or pod network. Health + metrics bind to the diagnostic port `8282` for kubelet probes and Prometheus scrape.
+- **The gateway's authz hook is switched on in-cluster** via `OPA_ENABLED=true` + `OPA_URL=http://127.0.0.1:8181` on the Deployment. The Python code default stays `opa_enabled=false` so local `make run-gateway` runs without a sidecar. The hook was already wired fail-closed in Phase 1-G (deny or unreachable both block).
+- **Authz baseline:** default-deny; a `consumer` may create a report + read consumer surfaces; scoped `"<action>:<resource>"` permissions override role rules; `admin` is scoped to the `admin*` surface.
+- **Redaction baseline (Entry 007):** `medpro.redaction` suppresses physician personal PII (home address, personal phone/email, DOB, SSN) from consumer-facing output; public-record professional data is always retained. Consumed by the Report Generation Service (C17, Phase 2); shipped now so the contract exists and is tested.
+- **OPA image** is the pinned upstream public image (`openpolicyagent/opa:0.70.0-rootless`), not an account-specific PLACEHOLDER. It is not a Helm chart, so it is not tracked in `charts-lock.yaml`; mirror it through ECR pull-through at deploy if a private registry is required.
+- **NetworkPolicy baseline** for the `api-gateway` namespace (the cross-namespace paths Entry 011 introduced): default-deny ingress+egress; allow DNS; allow API ingress from the ingress tier + metrics scrape from `observability`; allow egress to `identity`/`reports`/`workers`, to the OTel gateway, and external HTTPS:443 (Auth0 JWKS now, Stripe in Phase 2-J).
+**Reason:** Sidecar-per-service is OPA's recommended deployment model (lowest latency, no shared-availability dependency) and fits the per-namespace topology locked in Entry 011. A single authored bundle keeps policy DRY across future sidecars.
+**Risk acknowledged:** Each additional service needs the `opa-policy` ConfigMap replicated into its namespace (one small ArgoCD app per service). NetworkPolicy specifics (the exact ALB ingress source, downstream service ports) are finalized at deploy when those Services and the ingress controller exist. Policy enforcement is unverified against a live OPA + cluster (no cluster — Entry 003); validated by `opa test` (16 unit tests) and `kustomize build` only.
+**Locked:** Sidecar topology + baseline policies yes; ALB ingress source + downstream egress ports open until those components land.
+
+---
+
 <!-- Add new entries below this line -->

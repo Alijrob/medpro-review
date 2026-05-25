@@ -22,6 +22,7 @@ SCAN_PATHS=(
   "src/observability"
   "src/gitops/argocd/otel"
   "src/backend/api_gateway/deploy"
+  "src/policy"
 )
 
 echo "GitOps placeholder guard: scanning rendered config for PLACEHOLDER values..."

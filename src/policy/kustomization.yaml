@@ -1,0 +1,30 @@
+# =============================================================================
+# kustomization.yaml — OPA policy bundle ConfigMap (Phase 1-H)
+# =============================================================================
+# Status: NON-DEPLOYED. Applied by the `opa-policy` ArgoCD Application
+# (src/gitops/argocd/workloads/opa-policy.yaml, sync-wave -1) into the
+# `api-gateway` namespace. The api-gateway pod's OPA sidecar mounts this
+# ConfigMap at /policy and loads it on start.
+#
+# Co-located with the .rego source so the generator references only files within
+# this directory's root (ArgoCD's default RootOnly load restrictor), mirroring
+# the Phase 1-E observability overlays. Only the policy files are bundled; the
+# *_test.rego files are excluded from the ConfigMap (they run under `opa test`).
+#
+# disableNameSuffixHash: the gateway Deployment references this ConfigMap by the
+# fixed name `opa-policy` from a separate kustomize root, so the content-hash
+# suffix must be off.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: api-gateway
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: opa-policy
+    files:
+      - authz.rego
+      - redaction.rego

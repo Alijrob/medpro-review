@@ -1,0 +1,128 @@
+# =============================================================================
+# networkpolicies.yaml — api-gateway namespace network baseline (Phase 1-H)
+# =============================================================================
+# Status: NON-DEPLOYED. Zero-trust baseline for the api-gateway namespace
+# (DECISIONS.md Entry 011 introduced per-group namespaces and the cross-namespace
+# paths these policies gate). All resources are namespaced — within the
+# `workloads` AppProject scope.
+#
+# Namespaces are matched by the built-in `kubernetes.io/metadata.name` label
+# (Kubernetes >= 1.21 sets it automatically). The ingress tier is matched by the
+# `network.medpro/tier: ingress` label, which must be applied to the ingress
+# controller's namespace at deploy time (finalize with the ALB Ingress wiring).
+#
+# The OPA sidecar is in the same pod as the gateway (127.0.0.1:8181), so no
+# NetworkPolicy is needed for the gateway -> OPA decision path.
+# =============================================================================
+---
+# Deny everything by default; the policies below re-open only what is required.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: api-gateway
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Every pod may resolve DNS via kube-dns.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: api-gateway
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Ingress to the gateway: API traffic from the ingress/ALB tier, and metrics
+# scrapes (gateway :9464, OPA diagnostic :8282) from the observability namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway-ingress
+  namespace: api-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.medpro/tier: ingress
+      ports:
+        - protocol: TCP
+          port: 8000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 9464
+        - protocol: TCP
+          port: 8282
+---
+# Egress from the gateway: downstream services (Entry 011 cross-namespace paths),
+# the OTel gateway for telemetry, and external HTTPS for Auth0 JWKS (and Stripe
+# from Phase 2-J). Downstream service ports are left open in the baseline and
+# tightened once the identity/reports/workers Services declare their ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway-egress
+  namespace: api-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: identity
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: reports
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: workers
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # External HTTPS (Auth0 JWKS now; Stripe in Phase 2-J). RFC1918 ranges are
+    # excluded so cluster-internal traffic still flows only through the rules above.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

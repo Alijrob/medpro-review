@@ -28,7 +28,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 
 ## Current Phase
 
-**Phase 1-G COMPLETE** — API Gateway shell (`src/backend/api_gateway/`, component C8): FastAPI gateway that mounts the 1-F auth overlay and adds rate limiting, idempotency, request-id, security headers, and an OPA authz hook (C2 baseline). Deployable via a `workloads` ArgoCD app-of-apps into the `api-gateway` namespace (DECISIONS.md Entry 011). 15 behavior tests; runs via `make run-gateway`. Phase 1-H (OPA Baseline) is next.
+**Phase 1-H COMPLETE** — OPA Baseline (component C2): policy bundle in `src/policy/` (`medpro.authz` + `medpro.redaction`, 16 `opa test` units), delivered as the `opa-policy` ConfigMap by a sync-wave -1 ArgoCD app; OPA sidecar added to the gateway pod (localhost:8181) with `OPA_ENABLED=true` flipped on in-cluster (local dev stays off); NetworkPolicy baseline for the `api-gateway` namespace (default-deny + Entry 011 cross-namespace allows). DECISIONS.md Entry 012. Phase 1-I (Audit Ledger Service) is next.
+**Phase 1-G COMPLETE** — API Gateway shell (`src/backend/api_gateway/`, component C8): FastAPI gateway that mounts the 1-F auth overlay and adds rate limiting, idempotency, request-id, security headers, and an OPA authz hook (C2 baseline). Deployable via a `workloads` ArgoCD app-of-apps into the `api-gateway` namespace (DECISIONS.md Entry 011). 15 behavior tests; runs via `make run-gateway`.
 **Phase 1-F COMPLETE** — Auth & Identity Service shell (`src/backend/auth_service/`, C7): Auth0 JWT validation (RS256/JWKS), RBAC gates, Path B permissible-use gate. `make run-backend`.
 **Phase 1-E COMPLETE** — GitOps + CI/CD skeleton: ArgoCD app-of-apps (`src/gitops/`), pinned Helm charts, sync waves, PrometheusRule parity guard, kustomize ConfigMap overlays, deploy-time PLACEHOLDER guard. Non-deployed.
 **Path B (non-CRA) locked** — See DECISIONS.md entries 004-007.
@@ -54,7 +55,8 @@ A consumer-facing service that generates comprehensive intelligence reports on h
 | 1-E | GitOps + CI/CD Skeleton (ArgoCD app-of-apps, sync waves, pinned charts) | ✅ Complete |
 | 1-F | Auth Service Shell (C7 — Auth0 JWT validation, RBAC, Path B gate) | ✅ Complete |
 | 1-G | API Gateway Shell (C8 — auth overlay, rate limit, idempotency, OPA hook) | ✅ Complete |
-| 1-H | OPA Baseline | 🔄 Up next |
+| 1-H | OPA Baseline (C2 — policy bundle, sidecar, NetworkPolicies) | ✅ Complete |
+| 1-I | Audit Ledger Service (Aurora append-only, hash-chained) | 🔄 Up next |
 
 ---
 
@@ -118,7 +120,8 @@ make run-frontend    # Next.js dev server (src/frontend/)
 | `AUDIT_LOG_TABLE` | Aurora append-only audit table name (replaces QLDB — see DECISIONS.md Entry 005) | Phase 1-I |
 | `TEMPORAL_ADDRESS` | Workflow orchestration | Phase 2-H |
 | `AWS_REGION` | AWS services | Phase 1-B |
-| `OPA_URL` | Policy engine sidecar | Phase 1-H |
+| `OPA_ENABLED` | Switches on the gateway's fail-closed authz hook (set `true` in-cluster; code default `false`) | Phase 1-H (active in deploy) |
+| `OPA_URL` | OPA sidecar decision API (in-cluster: `http://127.0.0.1:8181`) | Phase 1-H (active in deploy) |
 
 All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operator in deployed environments.
 
@@ -168,9 +171,12 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `src/backend/api_gateway/README.md` | **API gateway quick-reference** — concerns, endpoints, topology, run/test |
 | `src/backend/api_gateway/middleware.py` | Rate limit, idempotency, request-id, security headers |
 | `src/backend/api_gateway/opa.py` | OPA authz hook (C2 baseline) — `require_authz(action, resource)` |
-| `src/backend/api_gateway/deploy/` | kustomize Deployment + Service (api-gateway namespace, IRSA SA) |
-| `src/gitops/argocd/workloads/` | Workload ArgoCD child apps (api-gateway); `workloads` AppProject |
+| `src/backend/api_gateway/deploy/` | kustomize Deployment (+ OPA sidecar) + Service + NetworkPolicies (api-gateway namespace, IRSA SA) |
+| `src/gitops/argocd/workloads/` | Workload ArgoCD child apps (api-gateway, opa-policy); `workloads` AppProject |
 | `tests/backend/test_api_gateway.py` | 15 behavior tests (auth chain, rate limit, idempotency, OPA) |
+| `src/policy/` | **OPA policy bundle (C2)** — `authz.rego` + `redaction.rego`, `opa test` units, `opa-policy` ConfigMap kustomization |
+| `src/policy/README.md` | OPA quick-reference — packages, sidecar model, authz/redaction contracts, validate |
+| `src/gitops/argocd/workloads/opa-policy.yaml` | Delivers the policy bundle to the api-gateway namespace (sync-wave -1) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -187,7 +193,14 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 1-H:** OPA Baseline (C2) — stand up the `opa-sidecar` with a baseline policy bundle (API authz, rate-limit policy, privacy redaction such as suppressing physician home address from consumer output), wire the gateway's `require_authz` hook to it (`opa_enabled=true`), and add NetworkPolicies for the cross-namespace paths Entry 011 introduced. The gateway's OPA client + fail-closed behavior already exist (Phase 1-G); 1-H provides the policies and the sidecar deployment.
+**Phase 1-I:** Audit Ledger Service — the append-only, hash-chained audit trail (Aurora `medpro_audit` DB; QLDB removed, DECISIONS.md Entry 005). The migrations already exist (1-C: `audit_events` + `audit_chain_checkpoints`, the `deny_audit_mutation` trigger, RLS, the `medpro_audit_writer` INSERT-only role). 1-I builds the service shell that writes hash-chained audit rows and exposes verification, plus its kustomize bundle + ArgoCD workload app in the `identity`/`reports`/`workers`-adjacent topology.
+
+**Phase 1-H OPA bundle validates locally (requires the `opa` CLI; no cluster needed):**
+```bash
+make opa-test                          # opa check + 16 unit tests
+kustomize build src/policy             # opa-policy ConfigMap renders
+kustomize build src/backend/api_gateway/deploy   # Deployment (+ opa sidecar) + Service + NetworkPolicies
+```
 
 **Phase 1-F/1-G backend validates locally (no Auth0/network/cluster needed):**
 ```bash
@@ -195,8 +208,7 @@ PYTHONPATH=src pytest tests/backend/ -v
 # Expected: 32 passed (17 auth + 15 gateway)
 
 make run-backend   # auth service  — uvicorn on :8000
-make run-gateway   # API gateway   — uvicorn on :8080
-kustomize build src/backend/api_gateway/deploy   # Deployment + Service render
+make run-gateway   # API gateway   — uvicorn on :8080 (OPA off locally — no sidecar)
 ```
 
 **Phase 1-E GitOps config validates locally (no cluster needed):**

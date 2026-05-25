@@ -1,0 +1,44 @@
+# =============================================================================
+# Application: opa-policy   (workloads project, sync-wave -1)
+# =============================================================================
+# Phase: 1-H. Status: NON-DEPLOYED.
+# Delivers the OPA policy bundle (src/policy) as the `opa-policy` ConfigMap into
+# the api-gateway namespace. Sync-wave -1 so the ConfigMap exists before the
+# api-gateway pod (wave 0), whose OPA sidecar mounts it at /policy.
+#
+# Component C2 (OPA) runs as a per-service sidecar; this app provides the shared
+# policy source. When a second service gets an OPA sidecar (e.g. the report
+# service, C17, Phase 2), it mounts the same bundle in its own namespace via an
+# analogous app.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opa-policy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: workloads
+  source:
+    repoURL: https://github.com/Alijrob/medpro-review.git
+    targetRevision: main
+    path: src/policy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: api-gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

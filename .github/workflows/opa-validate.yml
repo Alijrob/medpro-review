@@ -1,0 +1,35 @@
+name: OPA Validate
+
+on:
+  push:
+    paths:
+      - "src/policy/**"
+      - ".github/workflows/opa-validate.yml"
+  pull_request:
+    paths:
+      - "src/policy/**"
+      - ".github/workflows/opa-validate.yml"
+
+jobs:
+  opa-test:
+    name: OPA Policy Check + Test
+    runs-on: ubuntu-latest
+    env:
+      OPA_VERSION: "0.70.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -sSL -o /usr/local/bin/opa \
+            "https://openpolicyagent.org/downloads/v${OPA_VERSION}/opa_linux_amd64_static"
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      # Parse + type-check every policy in the bundle.
+      - name: opa check
+        run: opa check src/policy
+
+      # Unit tests for the authz + redaction policies (no cluster).
+      - name: opa test
+        run: opa test src/policy -v

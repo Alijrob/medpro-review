@@ -424,6 +424,170 @@ class TestWorkloads:
 
 
 # ---------------------------------------------------------------------------
+class TestOpaBaseline:
+    """Phase 1-H: OPA policy bundle, the opa-policy delivery app, the gateway's
+    OPA sidecar, and the api-gateway NetworkPolicy baseline."""
+
+    POLICY = ROOT / "src" / "policy"
+    POLICY_KUST = POLICY / "kustomization.yaml"
+    OPA_APP = GITOPS / "argocd" / "workloads" / "opa-policy.yaml"
+    GW_APP = GITOPS / "argocd" / "workloads" / "api-gateway.yaml"
+    DEPLOY = ROOT / "src" / "backend" / "api_gateway" / "deploy"
+    GW_CONFIG = ROOT / "src" / "backend" / "api_gateway" / "config.py"
+    GUARD = ROOT / "scripts" / "gitops-guard.sh"
+
+    # --- policy bundle -----------------------------------------------------
+    def test_policy_files_present(self):
+        for f in ("authz.rego", "redaction.rego", "kustomization.yaml"):
+            assert (self.POLICY / f).is_file(), f"src/policy missing {f}"
+
+    def test_policy_kustomization_generates_opa_policy_configmap(self):
+        k = _load_yaml(self.POLICY_KUST)
+        assert k["namespace"] == "api-gateway"
+        assert k["generatorOptions"]["disableNameSuffixHash"] is True
+        gens = {g["name"]: g for g in k["configMapGenerator"]}
+        assert "opa-policy" in gens
+        files = gens["opa-policy"]["files"]
+        assert set(files) == {"authz.rego", "redaction.rego"}
+        for f in files:
+            assert ".." not in f, f"generator file escapes root: {f}"
+            assert (self.POLICY / f).is_file()
+
+    def test_authz_package_matches_gateway_decision_path(self):
+        """The Rego package + rule must line up with the gateway's configured
+        opa_decision_path so the gateway actually queries this policy."""
+        cfg = self.GW_CONFIG.read_text()
+        assert "opa_decision_path" in cfg
+        m = re.search(r'default="(v1/data/[^"]+)"', cfg)
+        assert m, "could not find opa_decision_path default in gateway config"
+        path = m.group(1)  # e.g. v1/data/medpro/authz/allow
+        assert path.startswith("v1/data/")
+        segs = path[len("v1/data/"):].split("/")
+        pkg, rule = ".".join(segs[:-1]), segs[-1]
+        assert pkg == "medpro.authz"
+        assert rule == "allow"
+        authz = (self.POLICY / "authz.rego").read_text()
+        assert "package medpro.authz" in authz
+        assert re.search(rf"^{rule}\b", authz, re.MULTILINE) or f"default {rule}" in authz
+
+    def test_redaction_suppresses_home_address(self):
+        """DECISIONS.md Entry 007: physician home address suppressed for consumers."""
+        red = (self.POLICY / "redaction.rego").read_text()
+        assert "package medpro.redaction" in red
+        assert "home_address" in red
+
+    # --- delivery app ------------------------------------------------------
+    def test_workloads_inventory(self):
+        on_disk = {p.stem for p in (GITOPS / "argocd" / "workloads").glob("*.yaml")}
+        assert on_disk == {"api-gateway", "opa-policy"}, f"workloads drift: {on_disk}"
+
+    def test_opa_policy_app(self):
+        a = _load_yaml(self.OPA_APP)
+        assert a["kind"] == "Application"
+        assert a["spec"]["project"] == "workloads"
+        assert a["spec"]["destination"]["namespace"] == "api-gateway"
+        assert a["spec"]["source"]["path"] == "src/policy"
+        assert (ROOT / a["spec"]["source"]["path"]).is_dir()
+
+    def test_opa_policy_synced_before_gateway(self):
+        opa_wave = int(_load_yaml(self.OPA_APP)["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
+        gw_wave = int(_load_yaml(self.GW_APP)["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
+        assert opa_wave < gw_wave, "ConfigMap must sync before the gateway pod"
+
+    # --- sidecar -----------------------------------------------------------
+    def _deployment(self):
+        return next(
+            d for d in _load_yaml_all(self.DEPLOY / "deployment.yaml") if d["kind"] == "Deployment"
+        )
+
+    def test_opa_sidecar_present_and_pinned(self):
+        containers = {c["name"]: c for c in self._deployment()["spec"]["template"]["spec"]["containers"]}
+        assert "opa" in containers, "OPA sidecar container missing"
+        image = containers["opa"]["image"]
+        assert "openpolicyagent/opa" in image
+        assert "PLACEHOLDER" not in image, "OPA is a pinned public image, not a placeholder"
+        assert re.search(r":\d+\.\d+\.\d+", image), f"OPA image not version-pinned: {image}"
+
+    def test_opa_decision_api_is_localhost_only(self):
+        opa = next(
+            c for c in self._deployment()["spec"]["template"]["spec"]["containers"] if c["name"] == "opa"
+        )
+        addr = next(a for a in opa["args"] if a.startswith("--addr="))
+        assert "127.0.0.1:8181" in addr, "OPA decision API must bind to localhost only"
+
+    def test_gateway_enables_opa_at_localhost(self):
+        gw = next(
+            c for c in self._deployment()["spec"]["template"]["spec"]["containers"]
+            if c["name"] == "api-gateway"
+        )
+        env = {e["name"]: e.get("value") for e in gw["env"]}
+        assert env.get("OPA_ENABLED") == "true"
+        assert "127.0.0.1:8181" in env.get("OPA_URL", "")
+
+    def test_policy_volume_mounted_from_configmap(self):
+        spec = self._deployment()["spec"]["template"]["spec"]
+        vols = {v["name"]: v for v in spec["volumes"]}
+        assert vols.get("opa-policy", {}).get("configMap", {}).get("name") == "opa-policy"
+        opa = next(c for c in spec["containers"] if c["name"] == "opa")
+        mounts = {m["name"]: m["mountPath"] for m in opa["volumeMounts"]}
+        assert mounts.get("opa-policy") == "/policy"
+
+    # --- network policies --------------------------------------------------
+    def _netpols(self):
+        return {
+            d["metadata"]["name"]: d
+            for d in _load_yaml_all(self.DEPLOY / "networkpolicies.yaml")
+            if d.get("kind") == "NetworkPolicy"
+        }
+
+    def test_networkpolicies_in_bundle(self):
+        k = _load_yaml(self.DEPLOY / "kustomization.yaml")
+        assert "networkpolicies.yaml" in k["resources"]
+
+    def test_default_deny_all(self):
+        np = self._netpols()["default-deny-all"]
+        assert np["spec"]["podSelector"] == {}
+        assert set(np["spec"]["policyTypes"]) == {"Ingress", "Egress"}
+
+    def test_all_netpols_in_api_gateway_ns(self):
+        for name, np in self._netpols().items():
+            assert np["metadata"]["namespace"] == "api-gateway", name
+
+    def test_dns_egress_allowed(self):
+        np = self._netpols()["allow-dns-egress"]
+        ports = {(p["protocol"], p["port"]) for rule in np["spec"]["egress"] for p in rule["ports"]}
+        assert ("UDP", 53) in ports
+
+    def test_egress_reaches_downstream_namespaces(self):
+        """Entry 011 cross-namespace paths: gateway -> identity/reports/workers."""
+        np = self._netpols()["allow-api-gateway-egress"]
+        reached = {
+            sel["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
+            for rule in np["spec"]["egress"]
+            for sel in rule.get("to", [])
+            if "namespaceSelector" in sel
+        }
+        assert {"identity", "reports", "workers"} <= reached
+
+    def test_metrics_ingress_from_observability(self):
+        np = self._netpols()["allow-api-gateway-ingress"]
+        # the rule sourced from the observability namespace exposes the scrape ports
+        obs_rules = [
+            rule for rule in np["spec"]["ingress"]
+            for src in rule.get("from", [])
+            if src.get("namespaceSelector", {}).get("matchLabels", {}).get(
+                "kubernetes.io/metadata.name"
+            ) == "observability"
+        ]
+        ports = {p["port"] for rule in obs_rules for p in rule.get("ports", [])}
+        assert 9464 in ports, "Prometheus must be allowed to scrape gateway metrics"
+
+    # --- guard -------------------------------------------------------------
+    def test_guard_scans_policy_bundle(self):
+        assert '"src/policy"' in self.GUARD.read_text()
+
+
+# ---------------------------------------------------------------------------
 class TestServiceMonitorNamespaceReconciled:
     """DECISIONS.md Entry 011: ServiceMonitor selects the per-group workload
     namespaces, and the api-gateway Deployment lands in one of them."""

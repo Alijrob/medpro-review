@@ -3,7 +3,9 @@
 # =============================================================================
 # Status: NON-DEPLOYED. Applied by the `api-gateway` ArgoCD Application
 # (src/gitops/argocd/workloads/api-gateway.yaml). All resources are namespaced
-# (Deployment + Service) and stay within this directory's root.
+# (Deployment + Service + NetworkPolicies) and stay within this directory's root.
+# The opa-policy ConfigMap the Deployment mounts is delivered by a separate app
+# (src/policy via src/gitops/argocd/workloads/opa-policy.yaml, sync-wave -1).
 # =============================================================================
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -13,3 +15,4 @@ namespace: api-gateway
 resources:
   - deployment.yaml
   - service.yaml
+  - networkpolicies.yaml

@@ -4,6 +4,7 @@
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
+        opa-test \
         help
 
 ENV ?= dev
@@ -28,6 +29,8 @@ help:
 	@echo ""
 	@echo "  gitops-validate      Validate ArgoCD app-of-apps configs (Phase 1-E, no cluster needed)"
 	@echo "  gitops-guard         Deploy-time PLACEHOLDER guard — blocks ArgoCD sync until Entry 003"
+	@echo ""
+	@echo "  opa-test             Run OPA policy unit tests (Phase 1-H, requires opa CLI)"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -108,3 +111,8 @@ gitops-validate:
 
 gitops-guard:
 	@bash scripts/gitops-guard.sh
+
+opa-test:
+	@echo "Validating + testing OPA policy bundle (Phase 1-H)..."
+	opa check src/policy
+	opa test src/policy -v

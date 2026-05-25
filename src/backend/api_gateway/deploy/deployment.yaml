@@ -51,6 +51,14 @@ spec:
           env:
             - name: ENVIRONMENT
               value: PLACEHOLDER-ENV
+            # Phase 1-H: the OPA sidecar (below) exists in-cluster, so the
+            # gateway's require_authz hook is switched on and fails closed. The
+            # code default stays opa_enabled=false for local `make run-gateway`
+            # (no sidecar there). Decision API is same-pod over localhost.
+            - name: OPA_ENABLED
+              value: "true"
+            - name: OPA_URL
+              value: http://127.0.0.1:8181
           readinessProbe:
             httpGet:
               path: /readyz
@@ -75,3 +83,66 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+        # ---------------------------------------------------------------------
+        # OPA sidecar (component C2, Phase 1-H baseline).
+        # Loads the policy bundle from the opa-policy ConfigMap (delivered by the
+        # opa-policy ArgoCD app, sync-wave -1). The decision API binds to
+        # 127.0.0.1:8181 — same-pod only, so it is never exposed on the Service or
+        # pod network. /health + /metrics bind to the diagnostic port (8282) so
+        # the kubelet can probe and Prometheus can scrape. Pinned upstream image;
+        # mirror through ECR pull-through at deploy if a private registry is
+        # required (it is a public image, not an account-specific PLACEHOLDER).
+        # ---------------------------------------------------------------------
+        - name: opa
+          image: openpolicyagent/opa:0.70.0-rootless
+          args:
+            - "run"
+            - "--server"
+            - "--addr=127.0.0.1:8181"
+            - "--diagnostic-addr=0.0.0.0:8282"
+            - "--log-level=info"
+            - "--set=decision_logs.console=true"
+            - "/policy"
+          ports:
+            - name: opa-diag
+              containerPort: 8282
+          volumeMounts:
+            - name: opa-policy
+              mountPath: /policy
+              readOnly: true
+            - name: opa-tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: opa-diag
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: opa-diag
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        # Policy bundle mounted into the OPA sidecar. The ConfigMap is created in
+        # this namespace by the opa-policy ArgoCD app before this pod starts.
+        - name: opa-policy
+          configMap:
+            name: opa-policy
+        - name: opa-tmp
+          emptyDir: {}
