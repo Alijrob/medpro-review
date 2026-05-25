@@ -36,6 +36,7 @@ built and tested with no network I/O.
 | F2 — OIG LEIE | `sources/oig_leie.py` | monthly bulk CSV; API spot-check deferred | 2-B.2 ✅ |
 | F3 — SAM.gov Exclusions | `sources/sam_gov.py` | paginated REST API (api_key); delta-sync deferred | 2-B.3 ✅ |
 | F4 — CMS Care Compare | `sources/cms_care_compare.py` | SODA paginated JSON ($limit/$offset/$order=:id); no key | 2-B.4 ✅ |
+| I1 — CMS Medicare Enrollment | `sources/cms_medicare_enrollment.py` | Two SODA datasets in one run: enrollment + opt-out; `_record_type` tag; no key | 2-B.5 ✅ |
 
 ## Writing an adapter (C10, Phase 2-B)
 

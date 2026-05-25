@@ -255,4 +255,23 @@ Deviations from the locked architecture plan are logged here. Every entry requir
 
 ---
 
+## Entry 019 -- CMS Medicare Enrollment Adapter Design (Phase 2-B.5)
+
+**Date:** 2026-05-25
+**Decision:** The CMS Medicare Enrollment adapter -- source I1 -- ships as a **single connector that fetches two data.cms.gov SODA datasets in sequence** (`IntegrationMethod.REST_API`):
+
+- **Two datasets, one connector.** I1 covers two complementary Medicare signals: (1) Medicare FFS Provider Enrollment records (active participation, provider type, CMS enrollment ID) and (2) Medicare Opt-Out Affidavits (providers who have elected private-pay-only -- a high-value red flag). Both are CC0/T1/L0 open-data on `data.cms.gov`. The source-priority matrix (Entry 014 build sequence) lists them as a single I1 source. A single connector keeps the C24 Source Health Monitor's source inventory clean and avoids a proliferation of single-signal connectors for what is semantically one Medicare relationship signal pair.
+- **Two schema contracts.** `enrollment_contract` guards 6 fields (`npi`, `last_name`, `first_name`, `enroll_id`, `provider_type_desc`, `state_cd`). `opt_out_contract` guards 5 fields (`npi`, `last_name`, `first_name`, `optout_effective_date`, `order_refer_flag`). Each is applied per-record inside `fetch_raw` before yielding; the base-class single-contract path is suppressed (`contract = None`). `optout_end_date` is intentionally excluded from the opt-out contract: it is null for active opt-outs (the common case), and requiring it would cause false-positive SCHEMA_DRIFT alerts on nearly every row.
+- **`_record_type` tag.** Each yielded row is tagged with `_record_type = "enrollment"` or `_record_type = "opt_out"` before the contract is applied. C11 normalization (Phase 2-D) uses this tag to route each record to the correct signal extractor on the `CanonicalProviderProfile` without re-inspecting the payload shape.
+- **Same SODA pagination pattern as F4.** `$limit` + `$offset` + `$order=:id`, short-page sentinel termination. No API key required.
+- **Configurable dataset IDs.** `enrollment_dataset_id` (default: `s2uc-8wxp`) and `opt_out_dataset_id` (default: `7tef-9pja`) are constructor args. Both must be verified against `data.cms.gov/provider-characteristics` before first live ingest.
+- **Graceful partial result.** If the enrollment pass succeeds but the opt-out pass fails (e.g., source unavailable), `run()` returns `FetchStatus.PARTIAL` -- enrollment records are preserved. Schema drift in either pass stops the run with `FetchStatus.FAILED` and `SourceStatus.SCHEMA_DRIFT`.
+- **`expected_min_records` default is `None`** (covers both datasets combined). Production deployments should override to ~900 000 to catch truncated runs.
+
+**Reason:** The two datasets are semantically coupled (both describe a provider's Medicare relationship), are both on `data.cms.gov` SODA, and are always ingested together in the monthly batch. A single connector is the correct abstraction. The `_record_type` tag preserves routing information for C11 without re-parsing or adding a second pass over the record list.
+**Legal gate:** Built and tested against **stubbed transports only -- no network I/O**. Live ingestion is governed by the Phase 0 FCRA determination (I1 is T1/L0 open-data -- CC0).
+**Locked:** Single connector for I1 enrollment + opt-out, two per-type contracts in `fetch_raw`, `_record_type` tag, configurable dataset IDs.
+
+---
+
 <!-- Add new entries below this line -->
