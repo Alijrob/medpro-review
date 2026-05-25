@@ -1,4 +1,13 @@
-# Session Summary: 2026-05-25 (Phases 1-F + 1-G)
+# Session Summary: 2026-05-25 — Full Day (Phases 1-F → 2-A)
+
+> Two build sessions landed on 2026-05-25. This file is the day rollup.
+> **Session 1** (below): Phases 1-F + 1-G. **Session 2** (appended at the bottom):
+> Phases 1-H, 1-I, 2-A. Per-phase detail lives in the matching
+> `2026-05-25-session-summary-phase-*.md` files.
+
+---
+
+## Session 1 — Phases 1-F + 1-G
 
 Session-level rollup. Per-phase detail lives in:
 - `docs/session-logs/2026-05-25-session-summary-phase-1f.md`
@@ -104,4 +113,110 @@ Phase 1-H — OPA Baseline (C2): deploy the `opa-sidecar` with a baseline policy
 PYTHONPATH=src pytest tests/ -m "not integration"
 => 283 passed, 7 deselected
    44  tests/schema | 20 tests/data | 39 tests/observability | 148 tests/gitops | 32 tests/backend
+```
+
+---
+---
+
+## Session 2 — Phases 1-H, 1-I, 2-A
+
+Per-phase detail lives in:
+- `docs/session-logs/2026-05-25-session-summary-phase-1h.md`
+- `docs/session-logs/2026-05-25-session-summary-phase-1i.md`
+- `docs/session-logs/2026-05-25-session-summary-phase-2a.md`
+
+### Summary (readable cold)
+
+This session shipped three phases and **completed Phase 1 (Foundations)**, then opened Phase 2.
+**Phase 1-H — OPA Baseline (C2):** authored the policy bundle in `src/policy/` (`medpro.authz` +
+`medpro.redaction`, 16 `opa test` units), delivered as the `opa-policy` ConfigMap by a sync-wave -1
+ArgoCD app, added an OPA sidecar to the gateway pod (decision API on localhost:8181) with
+`OPA_ENABLED=true` flipped on in-cluster (local dev stays off), and laid a NetworkPolicy baseline
+for the `api-gateway` namespace (DECISIONS.md Entry 012). **Phase 1-I — Audit Ledger Service
+(C5-audit):** the append-only, hash-chained ledger that replaces QLDB (Entry 005) —
+per-`(target_type,target_id)` chaining, append/verify/checkpoint API, tamper detection by
+recomputation; deploys to the `workers` namespace as an internal ClusterIP behind a default-deny
+NetworkPolicy; Aurora-only (S3 WORM = Phase 4-F); DECISIONS.md Entry 013. **Phase 2-A — Source
+Connector Framework (C9):** the async-first library every source adapter (C10) builds on —
+`SourceConnector` ABC, error taxonomy, in-house retry/backoff (no tenacity), client-side throttling,
+a `SchemaContract` drift guard (risk R6), and a reusable `assert_connector_contract` harness; output
+is a `RawRecord` (pre-normalization) + `SourceHealthRecord` per run; framework only, no live source
+(legal gate governs the adapters); DECISIONS.md Entry 014. Everything is non-deployed; 350 pytest +
+16 OPA tests pass.
+
+### Repo + tracker
+
+- Repo: https://github.com/Alijrob/medpro-review
+- Tracker (pinned): https://github.com/Alijrob/pagios-ops/blob/287e346d97f5dfd60e06d858b44b926d498303ab/trackers/medpro-review-phase-tracker.md
+
+### Commit SHAs (Session 2, oldest → newest)
+
+| Repo | SHA | Message |
+|------|-----|---------|
+| medpro-review | 14189f4 | Phase 1-H: OPA Baseline (C2) |
+| medpro-review | c7315d1 | docs: session log — Phase 1-H |
+| medpro-review | 127378f | Phase 1-I: Audit Ledger Service (C5-audit) |
+| medpro-review | 0b1e292 | docs: session log — Phase 1-I (Phase 1 complete) |
+| medpro-review | 62b4dc5 | Phase 2-A: Source Connector Framework (C9) |
+| medpro-review | f15414b | docs: session log — Phase 2-A |
+| pagios-ops | bce4853 / 969c8ff / 287e346 | 1-H / 1-I / 2-A complete |
+
+**medpro-review HEAD at Session 2 start:** dd15534 (end of the prior 1-F/1-G session).
+
+### Files changed (by area)
+
+- Policy bundle (1-H): `src/policy/` (authz.rego, redaction.rego, *_test.rego, kustomization.yaml, README).
+- API gateway (1-H): `deploy/deployment.yaml` (OPA sidecar + OPA_ENABLED/OPA_URL), `deploy/networkpolicies.yaml`, `deploy/kustomization.yaml`.
+- Audit service (1-I): `src/backend/audit_service/` (config, models, ledger, routes, app, README, Dockerfile, deploy/).
+- Connector framework (2-A): `src/connectors/` (base, config, models, errors, retry, throttle, contract, testing, __init__, README).
+- GitOps: `argocd/workloads/opa-policy.yaml`, `argocd/workloads/audit-service.yaml`.
+- Decisions: `DECISIONS.md` Entries 012, 013, 014.
+- Wiring: `Makefile` (run-audit, opa-test, connectors-test), `scripts/gitops-guard.sh`, `pyproject.toml`, `.github/workflows/` (opa-validate, connectors-validate new; gitops/backend validate extended).
+- Tests: `tests/backend/test_audit_service.py` (15), `tests/connectors/test_framework.py` (21), `tests/gitops/test_gitops_config.py` (TestOpaBaseline +18, TestAuditService +11).
+- Docs: onboarding; per-phase session logs (1h, 1i, 2a).
+
+### Phase status
+
+- Phases 1-H, 1-I, 2-A: COMPLETE. **Phase 1 (Foundations): COMPLETE** (1-A … 1-I).
+- Phase 2-B (Federal Source Adapters, C10): UP NEXT.
+
+### Next likely step
+
+Phase 2-B — Federal Source Adapters (C10): NPPES (F1), OIG LEIE (F2), SAM.gov (F3), each a
+`SourceConnector` subclass with a `SchemaContract` + `assert_connector_contract` test. These ingest
+real data, so each is governed by the Phase 0 legal gate (all three are T1/L0 open-data). Build
+NPPES first (the identity anchor).
+
+### Known blockers
+
+1. Phase 0 legal gate (FCRA determination) — gates real ingestion in the C10 adapters (2-B onward).
+2. AWS account/region (Entry 003) — PLACEHOLDER everywhere; blocks any deploy. Domain locked (researchyourdoctor.com).
+3. No live cluster / Auth0 tenant / DB — shells + config validated structurally only.
+
+### Verified checks
+
+- Both working trees clean; `git status --porcelain` empty for medpro-review and pagios-ops.
+- medpro-review HEAD f15414b == origin/main; pagios-ops HEAD 287e346 == origin/main.
+- `PYTHONPATH=src pytest tests/ -m "not integration"` => 350 passed, 7 deselected (44 schema + 20 data + 39 observability + 179 gitops + 47 backend + 21 connectors).
+- `opa test src/policy` => 16/16 PASS; `kustomize build` renders policy, api_gateway/deploy, audit_service/deploy bundles.
+- `scripts/gitops-guard.sh` exits 1 (deploy correctly blocked by PLACEHOLDER images).
+
+### Blocked checks
+
+- No cluster/ArgoCD/OPA: manifests, sidecar bind, ConfigMap mount, NetworkPolicies unvalidated against a live cluster.
+- No Auth0 tenant; no live DB (audit ledger is in-memory; 7 data integration tests deselected).
+
+### Unverified items
+
+- Service images not built/pushed (PLACEHOLDER).
+- Connector default `httpx.AsyncClient` transport path untested (tests inject stubs); per-instance rate limiter is a per-replica floor.
+- NetworkPolicy egress CIDRs (ALB source, Aurora DB subnet, VPC endpoints) finalize at deploy.
+
+### Tests run (Session 2 end)
+
+```
+PYTHONPATH=src pytest tests/ -m "not integration"
+=> 350 passed, 7 deselected
+   44 schema | 20 data | 39 observability | 179 gitops | 47 backend | 21 connectors
+opa test src/policy => PASS 16/16
 ```
