@@ -49,3 +49,8 @@ credentials/
 # Logs
 *.log
 logs/
+
+# Playwright E2E
+src/frontend/playwright-report/
+src/frontend/test-results/
+src/frontend/playwright/.auth/user.json

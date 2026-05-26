@@ -9,7 +9,9 @@
     "lint": "next lint",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"__tests__/**/*.{ts,tsx}\"",
     "test": "jest --passWithNoTests",
-    "test:ci": "jest --ci --passWithNoTests"
+    "test:ci": "jest --ci --passWithNoTests",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^3.5.0",
@@ -20,6 +22,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.44.0",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^15.0.7",
     "@testing-library/user-event": "^14.5.2",

@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "npi": "1234567890",
+      "name": "Dr. Jane Smith",
+      "specialty": "Internal Medicine",
+      "entity_type": "individual",
+      "state": "CA",
+      "city": "San Francisco",
+      "identity_confidence": 0.98,
+      "has_exclusions": false,
+      "report_count": 0
+    },
+    {
+      "npi": "9876543210",
+      "name": "Dr. Robert Chen",
+      "specialty": "Cardiology",
+      "entity_type": "individual",
+      "state": "NY",
+      "city": "New York",
+      "identity_confidence": 0.95,
+      "has_exclusions": false,
+      "report_count": 0
+    }
+  ],
+  "total": 2,
+  "query": "smith"
+}

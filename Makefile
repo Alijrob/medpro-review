@@ -4,7 +4,7 @@
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test payment-test frontend-test \
+        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test payment-test frontend-test e2e-test \
         help
 
 ENV ?= dev
@@ -205,3 +205,9 @@ payment-test:
 frontend-test:
 	@echo "Running frontend tests (Jest + React Testing Library) -- Phase 2-K..."
 	cd src/frontend && npm test
+
+e2e-test:
+	@echo "Running E2E Playwright tests -- Phase 2-M..."
+	@echo "Note: requires a running Next.js server on http://localhost:3100"
+	@echo "Start it with: make run-frontend"
+	cd src/frontend && npx playwright test

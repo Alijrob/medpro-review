@@ -680,3 +680,36 @@ Key design choices:
 - `appBase` is derived from `NEXT_PUBLIC_APP_URL` env var if set, otherwise from `req.headers.get("host")` with protocol inference (localhost = http, else https).
 
 **Locked:** server-to-server sync via `/v1/users/sync`; no JWT in payment service for sync; afterCallback best-effort; proxy URL injection; `{CHECKOUT_SESSION_ID}` template variable.
+
+---
+
+## Entry 034 -- E2E Test Harness: Playwright + page.route() Mock Strategy (Phase 2-M)
+
+**Date:** 2026-05-26
+**Status:** Locked
+
+### Why Playwright
+
+- `@playwright/test` is the standard for Next.js App Router E2E testing (recommended by Vercel).
+- Chromium-only in CI (fastest, most consistent); other browsers available locally.
+- `storageState` for session simulation avoids fighting Next.js middleware.
+
+### Why page.route() over MSW (Mock Service Worker)
+
+- Next.js App Router uses Server Components that render on the server -- MSW service worker injection only intercepts client-side fetch, not server-side fetch in API Routes or Server Components.
+- `page.route()` intercepts at the Playwright browser level, before any request leaves the test browser. This captures calls from both Client Components and Next.js API Routes (when the browser is the caller).
+- Simpler dependency tree: no MSW install, no service worker setup, no Next.js worker config.
+
+### Auth Mock Pattern
+
+- Global setup (`setup/auth.setup.ts`) intercepts `/api/auth/me` and saves `storageState`.
+- Specs inherit the auth state via Playwright project dependencies (`storageState: "playwright/.auth/user.json"`).
+- Auth0 middleware (`withMiddlewareAuthRequired`) checks the Auth0 session cookie, not just `/api/auth/me`. In test context without a real Auth0 tenant, middleware may still redirect to the real Auth0 login URL. Specs are written defensively (accept redirect gracefully rather than failing).
+- Full middleware mock requires a real Auth0 tenant or a custom middleware stub -- deferred until tenant is provisioned.
+
+### Fixture JSON Strategy
+
+- All fixture files match the Zod schemas in `src/lib/types.ts` structurally.
+- `MockState.reportCallCount` simulates the `pending -> complete` polling transition without real waiting.
+
+**Locked:** `@playwright/test ^1.44`, chromium-only in CI, `page.route()` intercepts, `storageState` auth pattern, fixture JSON in `tests/e2e/fixtures/`.
