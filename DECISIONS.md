@@ -547,3 +547,35 @@ Key design choices:
 - `ProviderPipeline` async trigger endpoint (returns `report_id` for polling): Phase 2-I.
 
 **Locked:** activity-per-library pattern, `_RECORD_TYPE_MAP` deserialiser for NormalizedRecord subclasses, PATH_B_DISCLAIMER always injected, SourceCoverage category-level to per-source expansion, Jinja2 autoescape, best-effort retry for index activity, WORKER_ env prefix.
+
+---
+
+## Entry 030 -- Report Generation MVP: Persistence + Temporal Trigger (Phase 2-I)
+
+**Date:** 2026-05-26
+**Status:** Locked
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Phase 2-I wires the report pipeline to Aurora persistence and adds a Temporal workflow trigger endpoint to the report service API.
+
+**Key design choices:**
+
+- **Migration 0005 (`0005_report_json_storage.py`).** Adds `report_json JSONB NULL` and `report_html TEXT NULL` to the `reports` table (inline storage; S3 is Phase 5-C). Makes `user_id` and `use_agreement_id` nullable for the pre-payment MVP phase (FKs retained -- NULL is valid, non-NULL must reference existing rows). Adds a GIN/btree index on `(report_json->>'npi')`. `tos_version_at_purchase` defaults to `"mvp-1.0"` for rows created by the API.
+- **`ReportRepository` (sync SQLAlchemy).** Follows the audit service pattern: sync `create_engine`, no async ORM. Key operations: `create_row(npi, workflow_id?) -> UUID`, `set_workflow_id`, `mark_started`, `mark_complete(report_json, report_html, sources, is_partial)`, `mark_failed`, `get_row -> dict | None`. `is_configured` property guards all methods (raises `RuntimeError` if called with empty URL). HTML is silently truncated to NULL if it exceeds `html_max_bytes` (default 500 KB).
+- **`persist_report_activity` (Phase 2-I Temporal activity).** New `@activity.defn(name="persist_report")` activity added to the worker. Takes `PersistReportInput(report_id: str, pipeline_result: dict)`. Deserialises `pipeline_result` as `ProviderPipelineResult`, calls `mark_complete` or `mark_failed` based on `pipeline_status`. Never raises -- all errors returned as `PersistReportOutput(persisted=False, error_message=...)`. DB not configured = `persisted=False` immediately. Registered in the worker entrypoint.
+- **`ProviderPipelineWorkflow` step 7.** After `generate_report_activity`, if `inp.report_id` is set, the workflow calls `persist_report_activity` with `_BEST_EFFORT_RETRY` (maximum_attempts=1). Persistence failure does NOT fail the pipeline -- `ProviderPipelineResult` is returned regardless.
+- **`ProviderPipelineInput.report_id` field.** New optional field (`str | None = None`). The API sets this to the DB row UUID before starting the workflow. Backward-compatible (defaults to None -- existing workflow tests pass without it).
+- **`POST /v1/reports/request` endpoint.** Async FastAPI route. Steps: (1) validate NPI (10 digits), (2) generate `report_id = uuid4()`, (3) call `_repo.create_row(npi)` if DB configured, (4) call `_temporal_client.start_workflow(...)` if Temporal configured, (5) call `_repo.set_workflow_id(...)` if both succeeded. Returns `ReportRequestResponse(report_id, status="queued", npi, db_persisted, temporal_queued, message)`. Always returns 200 -- failures are reported as `db_persisted=False` / `temporal_queued=False` with a `message` field explaining what is unconfigured.
+- **`GET /v1/reports/{report_id}` endpoint.** Sync FastAPI route. Returns 503 if `_repo` is None; 422 if `report_id` is not a valid UUID; 404 if not found. Returns `ReportStatusResponse` with full row data including `report` (dict) and `has_html` (bool).
+- **Singleton injection pattern.** `_set_repo(repo)` and `_set_temporal_client(client)` module-level setters in routes.py. The app factory sets them in a `@app.on_event("startup")` handler (try/except -- safe if unconfigured). Test code can use `monkeypatch.setattr` to inject mock repositories.
+- **`ReportServiceSettings` (REPORT_ env prefix).** `database_url` (REPORT_DATABASE_URL, falls back to DATABASE_URL via `model_post_init`), `temporal_address`, `temporal_namespace`, `temporal_task_queue`, `html_max_storage_bytes`. `is_db_configured` and `is_temporal_configured` guard properties.
+- **65 new tests.** `test_persist_activity.py` (14 not-configured-path tests), `test_models.py` (35 model tests covering Phase 2-H + 2-I models), `test_report_service.py` additions (17 request/status endpoint tests + 2 monkeypatched mock-repo tests), `test_migrations.py` additions (7 0005 structural unit tests), `test_repository.py` (9 unit + 11 integration-marked). 1258 total passing (18 deselected integration). Zero regressions.
+
+**Deferred / open:**
+- Live Aurora DB: Entry 003 (AWS account/region). Integration tests in `test_repository.py` deselected.
+- Live Temporal cluster: Entry 003. `REPORT_TEMPORAL_ADDRESS` must be set.
+- HTML > 500 KB: stored as NULL; full S3 persistence is Phase 5-C.
+- `user_id` / `use_agreement_id` re-enforced as NOT NULL: Phase 2-J (payment + auth flow).
+- `tos_version_at_purchase = "mvp-1.0"` placeholder: Phase 2-J versioned agreement flow.
+
+**Locked:** migration-0005 inline JSON storage, ReportRepository sync SQLAlchemy, persist_report best-effort in workflow, REPORT_ env prefix, `is_configured` gate pattern, POST /v1/reports/request always-200 with diagnostic fields.

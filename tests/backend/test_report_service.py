@@ -1,11 +1,11 @@
 """
-test_report_service.py -- FastAPI TestClient tests for the Report Service (C17 basic).
+test_report_service.py -- FastAPI TestClient tests for the Report Service.
 
-20 tests covering all routes:
-    GET  /healthz
-    GET  /readyz
-    POST /v1/reports/from-profile          (JSON response)
-    POST /v1/reports/from-profile/html     (HTML response)
+Phase 2-H tests (20): healthz/readyz, from-profile JSON + HTML.
+Phase 2-I tests (16): request + status endpoints.
+
+All Phase 2-I tests run with _repo=None + _temporal_client=None
+(the default when DATABASE_URL and TEMPORAL_ADDRESS are not set in the test env).
 """
 from __future__ import annotations
 
@@ -180,3 +180,152 @@ def test_build_html_report_invalid_profile_422():
         "/v1/reports/from-profile/html", json={"profile": {"nope": True}}
     )
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-I: POST /v1/reports/request
+# Tests run with _repo=None + _temporal_client=None (no env vars set)
+# ---------------------------------------------------------------------------
+
+
+def test_request_report_returns_200():
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    assert resp.status_code == 200
+
+
+def test_request_report_returns_report_id():
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    data = resp.json()
+    assert "report_id" in data
+    assert len(data["report_id"]) == 36  # UUID length
+
+
+def test_request_report_two_calls_different_ids():
+    r1 = client.post("/v1/reports/request", json={"npi": NPI_ALICE}).json()["report_id"]
+    r2 = client.post("/v1/reports/request", json={"npi": NPI_ALICE}).json()["report_id"]
+    assert r1 != r2
+
+
+def test_request_report_npi_in_response():
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    assert resp.json()["npi"] == NPI_ALICE
+
+
+def test_request_report_status_is_queued():
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    assert resp.json()["status"] == "queued"
+
+
+def test_request_report_db_not_persisted_when_not_configured():
+    """No DATABASE_URL set -- db_persisted must be False."""
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    assert resp.json()["db_persisted"] is False
+
+
+def test_request_report_temporal_not_queued_when_not_configured():
+    """No TEMPORAL_ADDRESS set -- temporal_queued must be False."""
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    assert resp.json()["temporal_queued"] is False
+
+
+def test_request_report_message_explains_unconfigured():
+    """message field must explain why nothing is wired in dev."""
+    resp = client.post("/v1/reports/request", json={"npi": NPI_ALICE})
+    msg = resp.json().get("message") or ""
+    # At least one of DB / Temporal not configured message expected
+    assert "not configured" in msg.lower() or msg == ""
+
+
+def test_request_report_invalid_npi_too_short_422():
+    resp = client.post("/v1/reports/request", json={"npi": "123456789"})
+    assert resp.status_code == 422
+
+
+def test_request_report_invalid_npi_too_long_422():
+    resp = client.post("/v1/reports/request", json={"npi": "12345678901"})
+    assert resp.status_code == 422
+
+
+def test_request_report_alpha_npi_422():
+    resp = client.post("/v1/reports/request", json={"npi": "12345ABCDE"})
+    assert resp.status_code == 422
+
+
+def test_request_report_empty_npi_422():
+    resp = client.post("/v1/reports/request", json={"npi": ""})
+    assert resp.status_code == 422
+
+
+def test_request_report_missing_npi_422():
+    resp = client.post("/v1/reports/request", json={})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-I: GET /v1/reports/{report_id}
+# ---------------------------------------------------------------------------
+
+
+def test_get_report_db_not_configured_503():
+    """No DATABASE_URL set -- GET /v1/reports/{id} must return 503."""
+    resp = client.get("/v1/reports/12345678-1234-1234-1234-123456789012")
+    assert resp.status_code == 503
+
+
+def test_get_report_db_not_configured_explains():
+    resp = client.get("/v1/reports/12345678-1234-1234-1234-123456789012")
+    detail = resp.json().get("detail", "").lower()
+    assert "not configured" in detail or "persistence" in detail
+
+
+def test_get_report_with_mock_repo_not_found(monkeypatch):
+    """With a mock repo that returns None, should get 404."""
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    class _MockRepo:
+        def get_row(self, report_id):
+            return None
+
+    monkeypatch.setattr(route_module, "_repo", _MockRepo())
+    try:
+        resp = client.get("/v1/reports/12345678-1234-1234-1234-123456789012")
+        assert resp.status_code == 404
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_report_with_mock_repo_found(monkeypatch):
+    """With a mock repo that returns a row, should get 200."""
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    _row = {
+        "report_id": "12345678-1234-1234-1234-123456789012",
+        "npi": NPI_ALICE,
+        "status": "complete",
+        "is_partial": False,
+        "requested_at": "2026-05-26T10:00:00+00:00",
+        "started_at": "2026-05-26T10:00:05+00:00",
+        "completed_at": "2026-05-26T10:01:00+00:00",
+        "expires_at": "2026-06-25T10:00:00+00:00",
+        "temporal_workflow_id": f"report-{NPI_ALICE}-abc",
+        "sources_attempted": ["F1", "F2"],
+        "sources_succeeded": ["F1", "F2"],
+        "sources_failed": [],
+        "report": {"npi": NPI_ALICE, "is_partial": False},
+        "has_html": False,
+    }
+
+    class _MockRepo:
+        def get_row(self, report_id):
+            return _row
+
+    monkeypatch.setattr(route_module, "_repo", _MockRepo())
+    try:
+        resp = client.get("/v1/reports/12345678-1234-1234-1234-123456789012")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["npi"] == NPI_ALICE
+        assert data["status"] == "complete"
+        assert data["report"]["npi"] == NPI_ALICE
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)

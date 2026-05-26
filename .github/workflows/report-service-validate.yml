@@ -1,0 +1,60 @@
+name: Report Service Validate (Phase 2-I)
+
+on:
+  push:
+    paths:
+      - "src/backend/report_service/**"
+      - "src/workers/activities/persist_report.py"
+      - "src/workers/models.py"
+      - "src/workers/config.py"
+      - "src/data/migrations/versions/0005_report_json_storage.py"
+      - "tests/backend/test_report_service.py"
+      - "tests/workers/test_persist_activity.py"
+      - "tests/workers/test_models.py"
+      - "tests/report/test_repository.py"
+      - "tests/data/test_migrations.py"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/backend/report_service/**"
+      - "src/workers/activities/persist_report.py"
+      - "src/workers/models.py"
+      - "src/workers/config.py"
+      - "src/data/migrations/versions/0005_report_json_storage.py"
+      - "tests/backend/test_report_service.py"
+      - "tests/workers/test_persist_activity.py"
+      - "tests/workers/test_models.py"
+      - "tests/report/test_repository.py"
+      - "tests/data/test_migrations.py"
+      - "pyproject.toml"
+
+jobs:
+  report-service-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --no-root
+
+      - name: Run report service tests (unit + Phase 2-I endpoints)
+        run: |
+          PYTHONPATH=src poetry run pytest \
+            tests/backend/test_report_service.py \
+            tests/report/ \
+            tests/workers/test_persist_activity.py \
+            tests/workers/test_models.py \
+            tests/data/test_migrations.py \
+            -m "not integration" \
+            -v --tb=short
+
+      - name: Run full worker test suite
+        run: |
+          PYTHONPATH=src poetry run pytest tests/workers/ -m "not integration" -v --tb=short

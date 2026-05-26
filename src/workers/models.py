@@ -117,6 +117,21 @@ class GenerateReportOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# persist_report_activity
+# ---------------------------------------------------------------------------
+
+
+class PersistReportInput(BaseModel):
+    report_id: str  # UUID string -- the reports table primary key
+    pipeline_result: dict[str, Any]  # serialised ProviderPipelineResult
+
+
+class PersistReportOutput(BaseModel):
+    persisted: bool = False
+    error_message: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # ProviderPipelineInput / ProviderPipelineResult (workflow level)
 # ---------------------------------------------------------------------------
 
@@ -128,6 +143,13 @@ class ProviderPipelineInput(BaseModel):
         description="Which source IDs to attempt. Empty = use P1_SOURCE_IDS default.",
     )
     include_html: bool = True
+    report_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional reports-table UUID. When set, ProviderPipelineWorkflow calls "
+            "persist_report_activity as its final step to write the result to Aurora."
+        ),
+    )
 
 
 class ProviderPipelineResult(BaseModel):

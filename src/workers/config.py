@@ -41,6 +41,9 @@ class WorkerSettings(BaseSettings):
     # Report activity
     generate_html_in_report_activity: bool = True
 
+    # Persist report activity (Phase 2-I)
+    persist_activity_timeout_s: int = 30  # 30 s
+
     model_config = {"env_prefix": "WORKER_", "case_sensitive": False}
 
     @property

@@ -33,6 +33,7 @@ from .activities import (
     index_profile_activity,
     link_and_merge_activity,
     normalize_records_activity,
+    persist_report_activity,
     resolve_identity_activity,
 )
 from .config import get_settings
@@ -67,6 +68,7 @@ async def run_worker() -> None:
             link_and_merge_activity,
             index_profile_activity,
             generate_report_activity,
+            persist_report_activity,
         ],
         workflows=[ProviderPipelineWorkflow],
         max_concurrent_activities=settings.temporal_max_concurrent_activities,

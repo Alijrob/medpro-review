@@ -33,6 +33,7 @@ with workflow.unsafe.imports_passed_through():
         index_profile_activity,
         link_and_merge_activity,
         normalize_records_activity,
+        persist_report_activity,
         resolve_identity_activity,
     )
     from workers.config import P1_SOURCE_IDS, get_settings
@@ -42,6 +43,7 @@ with workflow.unsafe.imports_passed_through():
         IndexProfileInput,
         LinkAndMergeInput,
         NormalizeRecordsInput,
+        PersistReportInput,
         ProviderPipelineInput,
         ProviderPipelineResult,
         ResolveIdentityInput,
@@ -220,7 +222,7 @@ class ProviderPipelineWorkflow:
             npi, pipeline_status, report_out.report_id,
         )
 
-        return ProviderPipelineResult(
+        final_result = ProviderPipelineResult(
             npi=npi,
             report=report_out.report,
             html=report_out.html,
@@ -231,3 +233,21 @@ class ProviderPipelineWorkflow:
             sources_succeeded=sources_succeeded,
             sources_failed=sources_failed,
         )
+
+        # ------------------------------------------------------------------
+        # Step 7: Persist report (best-effort -- won't fail the pipeline)
+        # Only runs when inp.report_id is set (i.e., the request came through
+        # the API gateway which created the DB row first).
+        # ------------------------------------------------------------------
+        if inp.report_id:
+            await workflow.execute_activity(
+                persist_report_activity,
+                PersistReportInput(
+                    report_id=inp.report_id,
+                    pipeline_result=final_result.model_dump(mode="json"),
+                ),
+                start_to_close_timeout=timedelta(seconds=settings.persist_activity_timeout_s),
+                retry_policy=_BEST_EFFORT_RETRY,
+            )
+
+        return final_result

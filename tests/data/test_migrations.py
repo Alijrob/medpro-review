@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -46,6 +46,7 @@ class TestMigrationFiles:
         assert revisions.get("0002") == "0001", "0002 must reference 0001"
         assert revisions.get("0003") == "0002", "0003 must reference 0002"
         assert revisions.get("0004") == "0003", "0004 must reference 0003"
+        assert revisions.get("0005") == "0004", "0005 must reference 0004"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()
@@ -141,6 +142,42 @@ class TestMigrationFiles:
             assert "pass" not in downgrade_body[:50], (
                 f"{f.name} downgrade() appears to be a no-op stub"
             )
+
+    def test_0005_file_exists(self):
+        assert (MIGRATIONS_DIR / "0005_report_json_storage.py").exists(), (
+            "Migration 0005 file not found"
+        )
+
+    def test_0005_adds_report_json_column(self):
+        text = (MIGRATIONS_DIR / "0005_report_json_storage.py").read_text()
+        assert "report_json" in text, "0005 must add report_json column to reports"
+
+    def test_0005_adds_report_html_column(self):
+        text = (MIGRATIONS_DIR / "0005_report_json_storage.py").read_text()
+        assert "report_html" in text, "0005 must add report_html column to reports"
+
+    def test_0005_alters_user_id_nullable(self):
+        """user_id must be made nullable so pre-payment reports can be created."""
+        text = (MIGRATIONS_DIR / "0005_report_json_storage.py").read_text()
+        assert "user_id" in text, "0005 must alter user_id nullable"
+        assert "nullable" in text, "0005 alter_column call must set nullable"
+
+    def test_0005_alters_use_agreement_id_nullable(self):
+        """use_agreement_id must be made nullable for MVP (pre-payment phase)."""
+        text = (MIGRATIONS_DIR / "0005_report_json_storage.py").read_text()
+        assert "use_agreement_id" in text, "0005 must alter use_agreement_id nullable"
+
+    def test_0005_targets_reports_table(self):
+        text = (MIGRATIONS_DIR / "0005_report_json_storage.py").read_text()
+        assert '"reports"' in text or "'reports'" in text, (
+            "0005 must operate on the reports table"
+        )
+
+    def test_0005_has_downgrade(self):
+        text = (MIGRATIONS_DIR / "0005_report_json_storage.py").read_text()
+        assert "def downgrade()" in text
+        # Should drop the added columns in downgrade
+        assert "drop_column" in text, "0005 downgrade must drop the added columns"
 
 
 class TestOpenSearchTemplate:
