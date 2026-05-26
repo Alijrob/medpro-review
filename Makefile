@@ -1,10 +1,10 @@
 # Makefile — Medical Professionals Review
 
-.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-search-service run-frontend lint test \
+.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-search-service run-report-service run-worker run-frontend lint test \
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test \
+        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test \
         help
 
 ENV ?= dev
@@ -164,3 +164,25 @@ search-test:
 	@echo "Testing the Provider Search Service (Phase 2-G, C14)..."
 	PYTHONPATH=src poetry run pytest tests/search/ tests/backend/test_search_service.py -v 2>/dev/null || \
 		PYTHONPATH=src pytest tests/search/ tests/backend/test_search_service.py -v
+
+report-test:
+	@echo "Testing the Report Generation Library (Phase 2-H, C17)..."
+	PYTHONPATH=src poetry run pytest tests/report/ tests/backend/test_report_service.py -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/report/ tests/backend/test_report_service.py -v
+
+worker-test:
+	@echo "Testing the Temporal Worker activities (Phase 2-H, C15)..."
+	PYTHONPATH=src poetry run pytest tests/workers/ -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/workers/ -v
+
+run-report-service:
+	@echo "Starting report service (Phase 2-H shell) on http://localhost:8004 ..."
+	@echo "Try: curl localhost:8004/healthz  |  docs at /docs"
+	@echo "     curl -X POST localhost:8004/v1/reports/from-profile -H 'Content-Type: application/json' -d '{\"profile\": {...}}'"
+	PYTHONPATH=src poetry run uvicorn backend.report_service.app:app --host 0.0.0.0 --port 8004 --reload 2>/dev/null || \
+		PYTHONPATH=src uvicorn backend.report_service.app:app --host 0.0.0.0 --port 8004 --reload
+
+run-worker:
+	@echo "Starting Temporal worker (Phase 2-H, C15) -- requires WORKER_TEMPORAL_ADDRESS to be set..."
+	PYTHONPATH=src poetry run python -m workers.worker 2>/dev/null || \
+		PYTHONPATH=src python3 -m workers.worker

@@ -512,3 +512,38 @@ Key design choices:
 - Phase 2-K frontend integration: uses `GET /v1/providers/search` + `GET /v1/providers/{npi}`.
 
 **Locked:** library pattern + service split, httpx over opensearch-py, NPI as `_id`, pure document builder, function_score identity_confidence boost, SEARCH_ env prefix, `is_configured` shell pattern.
+
+---
+
+## Entry 029 -- Temporal Workflow + Basic Report Generation Design (Phase 2-H)
+
+**Date:** 2026-05-26
+**Status:** Locked
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Phase 2-H ships two components: `src/workers/` (C15 basic -- Temporal worker) and `src/report/` (C17 basic -- report generation library + HTML renderer), plus a `src/backend/report_service/` FastAPI shell (port 8004).
+
+**Key design choices:**
+
+- **`src/workers/` library + worker entrypoint.** Six Temporal activity functions (`fetch_source_activity`, `normalize_records_activity`, `resolve_identity_activity`, `link_and_merge_activity`, `index_profile_activity`, `generate_report_activity`), each wrapping one Phase 2 pure library (C10-C17). `ProviderPipelineWorkflow` orchestrates all six in sequence with a parallel fan-out fetch step. Activities are plain Python functions decorated with `@activity.defn` -- testable without a live Temporal server.
+- **Temporal `temporalio` Python SDK (v1.27).** `@workflow.defn` + `@workflow.run` pattern. `with workflow.unsafe.imports_passed_through()` for non-deterministic imports inside the workflow module. Retry policies: standard 3-attempt exponential backoff for all steps; `maximum_attempts=1` (best-effort) for OpenSearch index and, if needed, future non-critical steps.
+- **NormalizedRecord subclass deserialisation.** Temporal serialises activity I/O as JSON. Roundtripping `NormalizedRecord` through JSON loses subclass type info. Fixed with a `_RECORD_TYPE_MAP` dict keyed on `record_type` discriminator string -- the link and resolve activities use it to reconstruct the correct subclass (e.g., `NppesRecord`) before passing to the entity linker.
+- **`src/report/` pure library.** `build_report(profile) -> ProviderReport`: pure transform, no network I/O. `render_html(report) -> str`: Jinja2 autoescape on. `PATH_B_DISCLAIMER` constant always injected (DECISIONS.md Entry 007). `is_partial` propagates from `CanonicalProviderProfile`.
+- **`ProviderReport` typed model.** Flat, JSON-serialisable Pydantic model. Sections: identity, addresses, licenses, exclusions, disciplinary, education, insurance, source coverage. `has_active_license`, `has_active_exclusion`, `has_active_discipline` booleans for fast UI flags.
+- **`SourceCoverage` expansion.** `CanonicalProviderProfile.source_coverage` is category-level (one entry per `SourceCategory`). `_build_source_coverage()` expands it to per-source rows using `sources_attempted` + `sources_succeeded`/`sources_failed` membership checks.
+- **Jinja2 HTML template.** `provider_report.html.j2`: self-contained (inline CSS), no external CDN. Status pills (active/revoked/suspended), alert banners for exclusions and disciplinary actions, partial report badge. `select_autoescape` for XSS protection. PDF (WeasyPrint) deferred to Phase 5-C.
+- **`src/backend/report_service/` FastAPI shell (port 8004).** `POST /v1/reports/from-profile` (JSON) and `POST /v1/reports/from-profile/html`. Accepts a serialised `CanonicalProviderProfile` body, builds and returns a report synchronously. No persistence, no Temporal trigger (those wire in Phase 2-I+).
+- **`P1_SOURCE_IDS` constant.** Worker config defines the canonical list of 9 P1 source IDs to attempt per pipeline run. Overridable per-workflow via `ProviderPipelineInput.source_ids`.
+- **I4 static path.** `fetch_source_activity` returns `fetch_status="success"` with empty records for source `I4` (NPPES Taxonomy Crosswalk) -- it is a static in-process lookup handled by the normaliser, not a live fetch.
+- **200 new tests.** `test_builder.py` (88 report library tests), `test_renderer.py` (30 HTML tests), `test_report_service.py` (22 FastAPI tests), `test_fetch_activity.py` (14 async activity tests), `test_normalize_activity.py` (21 tests), `test_resolve_activity.py` (16 tests), `test_link_activity.py` (16 tests), `test_index_activity.py` (14 tests), `test_generate_report_activity.py` (16 tests). 1193 total passing (7 deselected integration). Zero regressions.
+- **`report-test` + `worker-test` + `run-report-service` + `run-worker` Makefile targets.** `report` + `workers` packages added to pyproject.toml.
+
+**Deferred / open:**
+- Live Temporal cluster: Entry 003 (AWS account/region). `WORKER_TEMPORAL_ADDRESS` must be set.
+- `TEMPORAL_ADDRESS` + live Temporal workflow execution: Phase 2-H activities are wired and tested; end-to-end workflow execution deferred to when Entry 003 is resolved.
+- PDF rendering (WeasyPrint): Phase 5-C.
+- Report persistence (Aurora `reports` table): Phase 2-I.
+- Temporal trigger from API gateway: Phase 2-I.
+- `ProviderPipeline` async trigger endpoint (returns `report_id` for polling): Phase 2-I.
+
+**Locked:** activity-per-library pattern, `_RECORD_TYPE_MAP` deserialiser for NormalizedRecord subclasses, PATH_B_DISCLAIMER always injected, SourceCoverage category-level to per-source expansion, Jinja2 autoescape, best-effort retry for index activity, WORKER_ env prefix.

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Provider Report: {{ report.identity.display_name }} (NPI {{ report.npi }})</title>
+  <style>
+    /* Base */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; color: #1a1a2e; background: #f8f9fa; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+
+    /* Header */
+    .report-header { background: #1a1a2e; color: #fff; padding: 24px; border-radius: 8px 8px 0 0; }
+    .report-header h1 { font-size: 22px; font-weight: 700; }
+    .report-header .subtitle { font-size: 13px; color: #a0aec0; margin-top: 4px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge-partial { background: #ed8936; color: #fff; }
+    .badge-full { background: #48bb78; color: #fff; }
+
+    /* Alert banners */
+    .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid; }
+    .alert-danger { background: #fff5f5; border-color: #e53e3e; color: #822727; }
+    .alert-warning { background: #fffaf0; border-color: #ed8936; color: #7b341e; }
+    .alert-success { background: #f0fff4; border-color: #48bb78; color: #22543d; }
+    .alert-info { background: #ebf8ff; border-color: #4299e1; color: #2a4365; }
+
+    /* Sections */
+    .section { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 16px; overflow: hidden; }
+    .section-header { padding: 12px 16px; background: #f7fafc; border-bottom: 1px solid #e2e8f0; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #4a5568; display: flex; align-items: center; gap: 8px; }
+    .section-body { padding: 16px; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px 10px; font-weight: 600; color: #4a5568; background: #f7fafc; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 8px 10px; border-bottom: 1px solid #edf2f7; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    /* Status pills */
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .pill-active { background: #c6f6d5; color: #22543d; }
+    .pill-inactive { background: #fed7d7; color: #822727; }
+    .pill-unknown { background: #e2e8f0; color: #4a5568; }
+    .pill-revoked { background: #fed7d7; color: #822727; }
+    .pill-suspended { background: #feebc8; color: #7b341e; }
+
+    /* Key-value pairs */
+    .kv-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; }
+    .kv-label { color: #718096; font-weight: 500; }
+    .kv-value { color: #1a1a2e; }
+
+    /* Disclaimer */
+    .disclaimer { background: #fffbeb; border: 1px solid #f6e05e; border-radius: 6px; padding: 14px 16px; margin-top: 24px; font-size: 12px; color: #744210; line-height: 1.6; }
+    .disclaimer strong { font-weight: 700; }
+
+    /* Footer */
+    .report-footer { text-align: center; font-size: 11px; color: #a0aec0; margin-top: 16px; padding-bottom: 24px; }
+
+    /* Helpers */
+    .text-muted { color: #a0aec0; }
+    .text-danger { color: #e53e3e; font-weight: 600; }
+    .text-success { color: #38a169; font-weight: 600; }
+    .empty-state { color: #a0aec0; font-style: italic; font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="report-header">
+    <h1>{{ report.identity.display_name }}</h1>
+    <div class="subtitle">
+      NPI {{ report.npi }}
+      &nbsp;&bull;&nbsp;
+      {{ report.identity.entity_type | title }}
+      {% if report.identity.primary_specialty %}
+        &nbsp;&bull;&nbsp; {{ report.identity.primary_specialty }}
+      {% endif %}
+      &nbsp;&bull;&nbsp;
+      Generated {{ report.generated_at.strftime('%B %d, %Y at %H:%M UTC') }}
+      &nbsp;&nbsp;
+      {% if report.is_partial %}
+        <span class="badge badge-partial">Partial Report</span>
+      {% else %}
+        <span class="badge badge-full">Full Report</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- CRITICAL FLAGS -->
+  {% if report.has_active_exclusion %}
+  <div class="alert alert-danger" style="margin-top:16px;">
+    <strong>FEDERAL EXCLUSION ACTIVE:</strong>
+    This provider has an active federal exclusion (OIG LEIE / SAM.gov). Medicare and Medicaid
+    programs are prohibited from paying for services rendered by excluded providers.
+  </div>
+  {% endif %}
+
+  {% if report.has_active_discipline %}
+  <div class="alert alert-warning" style="margin-top:{% if not report.has_active_exclusion %}16px{% else %}0{% endif %};">
+    <strong>Active Disciplinary Action:</strong>
+    One or more disciplinary actions from a state licensing board are currently in effect.
+  </div>
+  {% endif %}
+
+  {% if report.is_partial %}
+  <div class="alert alert-info" style="margin-top:16px;">
+    <strong>Partial Report:</strong>
+    Data collection for this provider is still in progress. Some sections may be incomplete.
+    Check back later for the full report.
+  </div>
+  {% endif %}
+
+  <!-- IDENTITY -->
+  <div class="section" style="margin-top:16px;">
+    <div class="section-header">Provider Identity</div>
+    <div class="section-body">
+      <div class="kv-grid">
+        <span class="kv-label">NPI</span>
+        <span class="kv-value">{{ report.npi }}</span>
+
+        <span class="kv-label">Entity Type</span>
+        <span class="kv-value">{{ report.identity.entity_type | title }}</span>
+
+        {% if report.identity.credentials %}
+        <span class="kv-label">Credentials</span>
+        <span class="kv-value">{{ report.identity.credentials | join(', ') }}</span>
+        {% endif %}
+
+        {% if report.identity.primary_specialty %}
+        <span class="kv-label">Primary Specialty</span>
+        <span class="kv-value">{{ report.identity.primary_specialty }}</span>
+        {% endif %}
+
+        {% if report.identity.gender %}
+        <span class="kv-label">Gender</span>
+        <span class="kv-value">{{ report.identity.gender }}</span>
+        {% endif %}
+
+        <span class="kv-label">Identity Confidence</span>
+        <span class="kv-value">{{ "%.0f" | format(report.overall_confidence * 100) }}%</span>
+
+        <span class="kv-label">Data Completeness</span>
+        <span class="kv-value">{{ "%.0f" | format(report.report_completeness_score * 100) }}%</span>
+
+        {% if report.last_full_refresh_at %}
+        <span class="kv-label">Last Full Refresh</span>
+        <span class="kv-value">{{ report.last_full_refresh_at.strftime('%Y-%m-%d') }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ADDRESSES -->
+  {% if report.addresses %}
+  <div class="section">
+    <div class="section-header">Practice Addresses</div>
+    <div class="section-body">
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Address</th><th>Phone</th></tr>
+        </thead>
+        <tbody>
+        {% for addr in report.addresses %}
+          <tr>
+            <td>{{ addr.address_type | title }}</td>
+            <td>
+              {{ addr.line1 }}
+              {% if addr.line2 %}<br>{{ addr.line2 }}{% endif %}
+              <br>{{ addr.city }}, {{ addr.state }} {{ addr.zip_code }}
+            </td>
+            <td>{{ addr.phone or '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- LICENSE STATUS -->
+  <div class="section">
+    <div class="section-header">
+      License Status
+      {% if report.has_active_license %}
+        &nbsp;<span class="pill pill-active">{{ report.active_license_count }} Active</span>
+      {% else %}
+        &nbsp;<span class="pill pill-inactive">No Active Licenses Found</span>
+      {% endif %}
+    </div>
+    <div class="section-body">
+      {% if report.licenses %}
+      <table>
+        <thead>
+          <tr><th>State</th><th>Board</th><th>License #</th><th>Type</th><th>Status</th><th>Expires</th></tr>
+        </thead>
+        <tbody>
+        {% for lic in report.licenses %}
+          <tr>
+            <td>{{ lic.state }}</td>
+            <td>{{ lic.board_name }}</td>
+            <td>{{ lic.license_number }}</td>
+            <td>{{ lic.license_type }}</td>
+            <td>
+              {% if lic.status_is_active %}
+                <span class="pill pill-active">{{ lic.status }}</span>
+              {% elif 'revoked' in lic.status.lower() %}
+                <span class="pill pill-revoked">{{ lic.status }}</span>
+              {% elif 'suspend' in lic.status.lower() %}
+                <span class="pill pill-suspended">{{ lic.status }}</span>
+              {% else %}
+                <span class="pill pill-inactive">{{ lic.status }}</span>
+              {% endif %}
+            </td>
+            <td>{{ lic.expiration_date or '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="empty-state">No license records found in current data sources.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- EXCLUSIONS -->
+  <div class="section">
+    <div class="section-header">
+      Federal Exclusions (OIG LEIE / SAM.gov)
+      {% if report.has_active_exclusion %}
+        &nbsp;<span class="pill pill-inactive">EXCLUDED</span>
+      {% else %}
+        &nbsp;<span class="pill pill-active">No Active Exclusion</span>
+      {% endif %}
+    </div>
+    <div class="section-body">
+      {% if report.exclusions %}
+      <table>
+        <thead>
+          <tr><th>Authority</th><th>Type</th><th>Effective Date</th><th>Status</th><th>Basis</th></tr>
+        </thead>
+        <tbody>
+        {% for exc in report.exclusions %}
+          <tr>
+            <td>{{ exc.authority }}</td>
+            <td>{{ exc.exclusion_type }}</td>
+            <td>{{ exc.effective_date or '' }}</td>
+            <td>
+              {% if exc.is_active %}
+                <span class="pill pill-inactive">Active</span>
+              {% else %}
+                <span class="pill pill-active">Reinstated {{ exc.reinstatement_date or '' }}</span>
+              {% endif %}
+            </td>
+            <td>{{ exc.basis or '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="empty-state">No exclusion records found. Checked OIG LEIE and SAM.gov.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- DISCIPLINARY ACTIONS -->
+  <div class="section">
+    <div class="section-header">
+      State Board Disciplinary Actions
+      {% if report.has_active_discipline %}
+        &nbsp;<span class="pill pill-inactive">Active Action</span>
+      {% else %}
+        &nbsp;<span class="pill pill-active">No Active Discipline</span>
+      {% endif %}
+    </div>
+    <div class="section-body">
+      {% if report.disciplinary_actions %}
+      <table>
+        <thead>
+          <tr><th>State</th><th>Board</th><th>Action Type</th><th>Effective Date</th><th>Status</th><th>Case #</th></tr>
+        </thead>
+        <tbody>
+        {% for action in report.disciplinary_actions %}
+          <tr>
+            <td>{{ action.state }}</td>
+            <td>{{ action.board_name }}</td>
+            <td>{{ action.action_type }}</td>
+            <td>{{ action.effective_date or '' }}</td>
+            <td>
+              {% if action.is_active %}
+                <span class="pill pill-inactive">Active</span>
+              {% else %}
+                <span class="pill pill-active">Resolved</span>
+              {% endif %}
+            </td>
+            <td>{{ action.case_number or '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="empty-state">No disciplinary actions found in current data sources.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- EDUCATION -->
+  {% if report.education %}
+  <div class="section">
+    <div class="section-header">Education</div>
+    <div class="section-body">
+      <table>
+        <thead>
+          <tr><th>Institution</th><th>Degree</th><th>Graduation Year</th></tr>
+        </thead>
+        <tbody>
+        {% for edu in report.education %}
+          <tr>
+            <td>{{ edu.institution_name }}</td>
+            <td>{{ edu.degree or '' }}</td>
+            <td>{{ edu.graduation_year or '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- INSURANCE -->
+  <div class="section">
+    <div class="section-header">Insurance Participation</div>
+    <div class="section-body">
+      <div class="kv-grid">
+        <span class="kv-label">Medicare</span>
+        <span class="kv-value">
+          {% if report.opted_out_of_medicare %}
+            <span class="pill pill-inactive">Opted Out</span>
+          {% elif report.accepts_medicare is true %}
+            <span class="pill pill-active">Participating</span>
+          {% elif report.accepts_medicare is false %}
+            <span class="pill pill-inactive">Non-Participating</span>
+          {% else %}
+            <span class="pill pill-unknown">Unknown</span>
+          {% endif %}
+        </span>
+        <span class="kv-label">Medicaid</span>
+        <span class="kv-value">
+          {% if report.accepts_medicaid is true %}
+            <span class="pill pill-active">Participating</span>
+          {% elif report.accepts_medicaid is false %}
+            <span class="pill pill-inactive">Non-Participating</span>
+          {% else %}
+            <span class="pill pill-unknown">Unknown</span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SOURCE COVERAGE -->
+  {% if report.source_coverage %}
+  <div class="section">
+    <div class="section-header">Data Sources</div>
+    <div class="section-body">
+      <table>
+        <thead>
+          <tr><th>Source</th><th>Category</th><th>Status</th><th>As of</th></tr>
+        </thead>
+        <tbody>
+        {% for src in report.source_coverage %}
+          <tr>
+            <td>{{ src.source_id }}</td>
+            <td>{{ src.source_category }}</td>
+            <td>
+              {% if src.status == 'success' %}
+                <span class="pill pill-active">Success</span>
+              {% elif src.status == 'partial' %}
+                <span class="pill pill-suspended">Partial</span>
+              {% else %}
+                <span class="pill pill-inactive">{{ src.status | title }}</span>
+              {% endif %}
+            </td>
+            <td>{{ src.fetched_at.strftime('%Y-%m-%d') if src.fetched_at else '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- PATH B DISCLAIMER -->
+  <div class="disclaimer">
+    <strong>IMPORTANT NOTICE:</strong> {{ report.disclaimer }}
+  </div>
+
+  {% if report.has_pending_corrections %}
+  <div class="alert alert-warning" style="margin-top:16px;">
+    <strong>Pending Correction:</strong>
+    A dispute or data correction request is pending for this provider's record.
+    Information displayed here may be subject to revision.
+  </div>
+  {% endif %}
+
+  <!-- FOOTER -->
+  <div class="report-footer">
+    Report ID: {{ report.report_id }} &bull;
+    Generated: {{ report.generated_at.strftime('%Y-%m-%d %H:%M UTC') }} &bull;
+    Schema: {{ report.schema_version }} &bull;
+    ResearchYourDoctor.com
+  </div>
+
+</div>
+</body>
+</html>
