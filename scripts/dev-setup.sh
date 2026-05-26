@@ -69,9 +69,21 @@ else
   echo "[OK] direnv: $(direnv --version)"
 fi
 
+# --- Frontend npm install (Phase 2-K+) ---
+FRONTEND_DIR="$(dirname "$0")/../src/frontend"
+if [ -f "$FRONTEND_DIR/package.json" ]; then
+  echo "[INSTALL] Installing frontend npm dependencies (src/frontend/)..."
+  cd "$FRONTEND_DIR" && npm install --prefer-offline 2>&1 | tail -3 && cd - > /dev/null
+  echo "[OK] Frontend npm dependencies installed."
+  echo "[ACTION] Copy src/frontend/.env.local.example to src/frontend/.env.local and fill in Auth0 credentials."
+else
+  echo "[SKIP] src/frontend/package.json not found — skipping npm install."
+fi
+
 echo ""
 echo "=== Setup complete ==="
-echo "Backend:  make run-backend   (available from Phase 1-F)"
-echo "Frontend: make run-frontend  (available from Phase 2-K)"
-echo "Tests:    make test"
+echo "Backend:  make run-backend      (Phase 1-F, port 8000)"
+echo "Frontend: make run-frontend     (Phase 2-K, port 3100 -- requires .env.local)"
+echo "Tests:    make test             (Python pytest)"
+echo "          make frontend-test    (Jest + RTL)"
 echo "Lint:     make lint"
