@@ -28,8 +28,34 @@ Phase 3-A state board batch (P2 sources, see docs/reference/source-priority.md):
     S3  TX Medical Board         -- connectors.sources.state_boards.tx_medical_board (built, 3-A)
     S4  FL DOH FDBPR             -- connectors.sources.state_boards.fl_doh           (built, 3-A)
     S5  IL IDFPR                 -- connectors.sources.state_boards.il_idfpr         (built, 3-A)
+
+Phase 3-B state board batch (P2 sources):
+    S6  GA Composite Medical Board -- connectors.sources.state_boards.ga_composite_medical_board (built, 3-B)
+    S7  PA State Medical Board     -- connectors.sources.state_boards.pa_medical_board           (built, 3-B)
+    S8  OH State Medical Board     -- connectors.sources.state_boards.oh_state_medical_board     (built, 3-B)
+    S9  MI LARA BPL                -- connectors.sources.state_boards.mi_lara                    (built, 3-B)
+    S10 NC Medical Board           -- connectors.sources.state_boards.nc_medical_board           (built, 3-B)
+
+Phase 3-C court record batch (C1-C2 P2 + state courts early P3 exploration):
+    C2  CourtListener / RECAP Archive -- connectors.sources.court_records.court_listener (built, 3-C)
+    C1  PACER Case Locator            -- connectors.sources.court_records.pacer          (built, 3-C)
+    TX  Texas Courts Search           -- connectors.sources.court_records.tx_courts      (built, 3-C)
+    FL  Florida eCourts               -- connectors.sources.court_records.fl_courts      (built, 3-C)
+    NY  New York eCourts WebCivil     -- connectors.sources.court_records.ny_courts      (built, 3-C)
 """
 from .clinical_trials import ClinicalTrialsConnector, clinical_trials_config
+from .court_records import (
+    CourtListenerConnector,
+    court_listener_config,
+    FlCourtsConnector,
+    fl_courts_config,
+    NyCourtsConnector,
+    ny_courts_config,
+    PacerConnector,
+    pacer_config,
+    TxCourtsConnector,
+    tx_courts_config,
+)
 from .state_boards import (
     CaMedicalBoardConnector,
     ca_medical_board_config,
@@ -102,4 +128,21 @@ __all__ = [
     # S5 -- Illinois IDFPR
     "IlIdfprConnector",
     "il_idfpr_config",
+    # Phase 3-B -- State Boards (GA/PA/OH/MI/NC) -- exported via state_boards package
+    # Phase 3-C -- Court Records
+    # C2 -- CourtListener / RECAP Archive
+    "CourtListenerConnector",
+    "court_listener_config",
+    # C1 -- PACER Case Locator
+    "PacerConnector",
+    "pacer_config",
+    # TX -- Texas Courts Search
+    "TxCourtsConnector",
+    "tx_courts_config",
+    # FL -- Florida eCourts
+    "FlCourtsConnector",
+    "fl_courts_config",
+    # NY -- New York eCourts WebCivil
+    "NyCourtsConnector",
+    "ny_courts_config",
 ]

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -50,6 +50,7 @@ class TestMigrationFiles:
         assert revisions.get("0006") == "0005", "0006 must reference 0005"
         assert revisions.get("0007") == "0006", "0007 must reference 0006"
         assert revisions.get("0008") == "0007", "0008 must reference 0007"
+        assert revisions.get("0009") == "0008", "0009 must reference 0008"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()
@@ -342,6 +343,66 @@ class TestMigration0008:
                           "state_board_mi", "state_board_nc"):
             assert source_id in downgrade_section, (
                 f"0008 downgrade must reference '{source_id}'"
+            )
+
+
+class TestMigration0009:
+    """Migration 0009 -- Phase 3-C court record seed rows (CourtListener/PACER/TX/FL/NY)."""
+
+    def test_0009_file_exists(self):
+        assert (MIGRATIONS_DIR / "0009_court_record_seeds.py").exists(), (
+            "Migration 0009 file not found"
+        )
+
+    def test_0009_references_0008(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        assert 'down_revision' in text and '"0008"' in text, (
+            "0009 must reference 0008 as down_revision"
+        )
+
+    def test_0009_seeds_all_five_court_sources(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        for source_id in ("court_listener", "pacer", "court_tx", "court_fl", "court_ny"):
+            assert source_id in text, f"0009 must seed '{source_id}'"
+
+    def test_0009_does_not_seed_state_board_ids(self):
+        """State board IDs must not appear in 0009 (they belong in 0007/0008)."""
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        for source_id in ("state_board_ca", "state_board_ny", "state_board_tx",
+                          "state_board_fl", "state_board_il", "state_board_ga"):
+            assert source_id not in text, (
+                f"0009 must not seed state board source {source_id}"
+            )
+
+    def test_0009_uses_on_conflict_do_nothing(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        assert "ON CONFLICT" in text.upper() and "DO NOTHING" in text.upper(), (
+            "0009 seed INSERT must be idempotent (ON CONFLICT DO NOTHING)"
+        )
+
+    def test_0009_targets_source_health_records(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        assert "source_health_records" in text, (
+            "0009 must INSERT into source_health_records"
+        )
+
+    def test_0009_sets_court_category(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        assert "'court'" in text, (
+            "0009 seeded rows must use 'court' as source_category"
+        )
+
+    def test_0009_has_downgrade(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        assert "def downgrade()" in text
+        assert "DELETE" in text.upper(), "0009 downgrade must DELETE the seeded rows"
+
+    def test_0009_downgrade_targets_3c_ids_only(self):
+        text = (MIGRATIONS_DIR / "0009_court_record_seeds.py").read_text()
+        downgrade_section = text.split("def downgrade()")[1]
+        for source_id in ("court_listener", "pacer", "court_tx", "court_fl", "court_ny"):
+            assert source_id in downgrade_section, (
+                f"0009 downgrade must reference '{source_id}'"
             )
 
 

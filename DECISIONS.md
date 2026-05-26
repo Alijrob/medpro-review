@@ -894,3 +894,116 @@ the 5 phase-3-B source IDs -- does not touch the 3-A rows seeded by 0007.
 **Locked:** GA/PA/MI=SODA, OH=offset/limit, NC=page-number; all dataset IDs are
 placeholder defaults -- verify against live portals before ingest; `state_board_*`
 namespace continues; migration 0008 chains from 0007.
+
+
+---
+
+## Entry 038 -- Phase 3-C Court Record Adapters: Design Locked
+
+**Date:** 2026-05-26
+**Component:** C10 (court record adapters), C24 (migration 0009 health seeds)
+**Status:** Locked
+
+### Court Record Adapter Design (Phase 3-C)
+
+5 court record adapters covering federal and state court systems. These differ from
+state board adapters in one key structural way: they are lookup-by-name rather than
+full-dump. The `party_name` (or `last_name`/`first_name` for PACER) is injected at
+the connector level as a constructor arg, matching the on-demand per-provider report
+pipeline rather than the batch ingest pattern used for state board license data.
+
+### Source Selection and Integration Methods
+
+| Source | Module | Method | Source ID | Notes |
+|--------|--------|--------|-----------|-------|
+| CourtListener / RECAP | court_listener.py | REST_API | court_listener | C2, P2, CC0 license |
+| PACER Case Locator | pacer.py | REST_API | pacer | C1, P2, fee-based |
+| Texas Courts | tx_courts.py | REST_API | court_tx | P3 early exploration |
+| Florida eCourts | fl_courts.py | REST_API | court_fl | P3 early exploration |
+| New York eCourts | ny_courts.py | REST_API | court_ny | P3 early exploration |
+
+**Build order rationale:** CourtListener (C2) before PACER (C1) per source-priority.md
+-- CourtListener is free, CC0-licensed, and covers a large subset of federal court data.
+Exhaust CourtListener before incurring PACER per-page fees. State court adapters (TX/FL/NY)
+are P3 in source-priority.md but included as early exploration adapters alongside the
+federal court sources since they share the same adapter pattern and the name says
+"PACER + State Court Adapters."
+
+### Pagination Patterns
+
+- **CourtListener**: page-number (`?page=N&page_size=N`); terminates when `next` is null
+  in the response envelope `{"count": N, "next": URL|null, "results": [...]}`.
+- **PACER PCL**: 0-indexed page-number (`?page=N&size=N`); terminates when `page >= totalPages`
+  (from `{"content": [...], "totalPages": N}` envelope) or when `content` is empty.
+- **TX Courts**: offset/limit (`?offset=N&limit=N`); terminates on short-page sentinel.
+  Response may be bare list or dict-wrapped (`results`, `cases`, `data`).
+- **FL Courts**: offset/limit (`?offset=N&limit=N`); terminates on short-page sentinel.
+  Response may be bare list or dict-wrapped (`cases`, `results`, `data`).
+- **NY eCourts**: page-number (`?page=N&pageSize=N`); terminates when `next` is null
+  or `cases` is empty. Bare list responses also accepted (no pagination metadata).
+
+### Field Normalization
+
+All 5 adapters carry a `_FIELD_MAP: dict[str, str]` normalizing camelCase, PascalCase,
+and alias variants to contract snake_case names. Each adapter also normalizes `None`
+values to empty string (`""`) so that optional text fields (like `date_filed` which may
+be null for some historical cases) do not trigger false-positive SCHEMA_DRIFT events.
+
+Special normalization rules:
+- CourtListener: integer `id` field coerced to `str` (contract requires `str`); `id` key
+  maps to `docket_id`.
+- PACER: `caseTypeFull` alias maps to `case_type`; optional auth header `X-NEXT-GEN-CSO`
+  injected from `pacer_token` constructor arg.
+- NY eCourts: `captionOnFiling`, `caseCaption` -> `caption`; `rjiStatus` -> `status`;
+  `rjiDate` -> `date_filed`; `natureOfAction` -> `case_type`; bare list response accepted
+  with `has_next=False`.
+
+### Schema Contracts
+
+| Source | Contract Fields (all str) |
+|--------|--------------------------|
+| CourtListener | docket_id, case_name, docket_number, court, date_filed, nature_of_suit |
+| PACER | case_id, case_title, case_number, court_id, date_filed, case_type |
+| TX Courts | case_number, style, court, date_filed, case_type, status |
+| FL Courts | case_number, case_style, court, date_filed, case_type, status |
+| NY eCourts | index_number, caption, court_name, date_filed, case_type, status |
+
+Note: `SourceCategory.COURT` (already defined in schema v1 common.py) used for all 5.
+
+### Auth Patterns
+
+- CourtListener: optional `Authorization: Token <api_token>` header; omitted when no token
+  (lower rate-limit ceiling without token -- acceptable for monthly batch cadence).
+- PACER: optional `X-NEXT-GEN-CSO: <pacer_token>` header; token obtained out-of-band via
+  PACER login API; `pacer_token` is a constructor arg (secrets not in ConnectorConfig).
+- TX/FL/NY: no API key required for public search endpoints.
+
+### Migration 0009
+
+Seeds 5 rows into `source_health_records` (status=unknown, category='court').
+Chains from 0008. `ON CONFLICT DO NOTHING` for idempotency. Downgrade DELETEs only
+the 5 phase-3-C source IDs -- does not touch state board rows from 0007/0008.
+
+### Tests
+
+82 new tests total (1595 passing, up from 1513):
+- 5 adapter test files (~15-16 tests each): config identity (source_id, source_name,
+  SourceCategory.COURT, IntegrationMethod.REST_API), contract harness, pagination
+  pattern tests (including next-null termination, totalPages termination, short-page
+  sentinel, party_name params), field normalization (camelCase, aliases, int coercion,
+  None-to-empty-str), dict-wrapped response unwrapping, failure modes (schema drift,
+  non-JSON, non-dict/list responses)
+- 9 migration tests for 0009 in `test_migrations.py` (file existence, chain to 0008,
+  5 seeds, no state board duplication, idempotency, 'court' category, downgrade)
+
+### Legal Gate
+
+All 5 adapters are built and tested stub-only. Live ingest is governed by the Phase 0
+FCRA determination. PACER ToS permits programmatic access for legitimate purposes;
+CourtListener data is CC0-licensed. State court adapters (TX/FL/NY) require per-state
+counsel review (see tos-matrix.md C3-C8). Endpoint URLs for state courts are
+hypothetical placeholders and must be verified before live ingest.
+
+**Locked:** CourtListener cursor pagination, PACER 0-indexed page-number pagination,
+TX/FL offset/limit, NY page-number/next; `court_*` source ID namespace; SourceCategory.COURT;
+migration 0009 chains from 0008; all state court endpoints are placeholder defaults.
