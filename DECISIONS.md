@@ -756,3 +756,59 @@ Uses `ON CONFLICT (source_id) DO NOTHING` for idempotency.
 All adapters are tested stub-only. Live ingest requires the Phase 0 FCRA determination.
 
 **Locked:** `state_board_*` source ID namespace, CA=BULK_DOWNLOAD, NY/TX/FL/IL=REST_API, `_FIELD_MAP` normalization pattern, migration 0007 seeding pattern.
+
+---
+
+## Entry 036 -- PDF Report Generation: WeasyPrint + Payment Gate (Phase 2-N)
+
+**Date:** 2026-05-26
+**Component:** C17 (Report Service) + C18 (report library)
+**Status:** Locked
+
+### Decision
+
+WeasyPrint (>=62.0) is the PDF renderer. Chosen in Phase 2-H as the architecture-locked tool;
+this entry finalises the integration contract.
+
+### Implementation
+
+`src/report/pdf.py` -- `render_pdf(html: str) -> bytes` wraps `weasyprint.HTML(string=html).write_pdf()`.
+Soft import: `WEASYPRINT_AVAILABLE` flag is False when system deps (Pango, Cairo, GLib) are missing.
+The flag lets CI/dev operate without WeasyPrint installed.
+
+### PDF Endpoint Contract
+
+`GET /v1/reports/{report_id}/pdf` in the report service:
+
+- UUID validation first (422 before checking DB)
+- 503 if `_repo` not configured
+- 404 if report not found
+- 402 if `payment_status != 'paid'`
+- 409 if `status not in ('complete', 'partial')`
+- 422 if `report_html` is NULL (truncated at storage time)
+- 501 if `WEASYPRINT_AVAILABLE` is False
+- 200 `application/pdf` with `Content-Disposition: attachment` on success
+
+`payment_status` is now included in `ReportStatusResponse` (was missing before -- frontend Zod schema
+already had it; this aligns the backend model).
+
+`repository.get_row()` now SELECTs `payment_status` and `report_html` (previously `has_html` was
+returned but not the raw HTML string itself).
+
+### Frontend
+
+`GET /api/reports/[id]/pdf` -- Next.js proxy route; 30s timeout (PDF rendering can be slow);
+streams `arrayBuffer` back with `Content-Type: application/pdf`.
+
+"Download PDF" anchor in `ReportViewer.tsx` is visible only when
+`isComplete(status) && payment_status === 'paid'`. Uses native `download` attribute so the browser
+names the file correctly.
+
+### Tests
+
+12 new tests in `tests/backend/test_report_service.py`:
+503/422/404/402x2/409x2/422-no-html/501/200-bytes/200-content-type/200-disposition/200-partial.
+`render_pdf` is monkeypatched in all 200-path tests -- no WeasyPrint system deps required in CI.
+
+**Locked:** soft-import pattern, gate order (UUID -> DB -> payment -> status -> html -> WeasyPrint),
+Next.js proxy timeout 30s, filename pattern `medpro-report-{npi}-{id[:8]}.pdf`.

@@ -176,6 +176,7 @@ class ReportStatusResponse(BaseModel):
     npi: str
     status: str
     is_partial: bool
+    payment_status: str = "unpaid"  # unpaid | pending | paid | refunded
     requested_at: str | None
     started_at: str | None
     completed_at: str | None
@@ -298,6 +299,7 @@ def get_report_status(report_id: str) -> ReportStatusResponse:
         npi=row["npi"],
         status=row["status"],
         is_partial=row["is_partial"],
+        payment_status=row.get("payment_status", "unpaid"),
         requested_at=row.get("requested_at"),
         started_at=row.get("started_at"),
         completed_at=row.get("completed_at"),
@@ -308,4 +310,116 @@ def get_report_status(report_id: str) -> ReportStatusResponse:
         sources_failed=row.get("sources_failed", []),
         report=row.get("report"),
         has_html=row.get("has_html", False),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-N: GET /v1/reports/{report_id}/pdf
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/v1/reports/{report_id}/pdf",
+    response_class=Response,
+    status_code=200,
+    tags=["reports"],
+    summary="Download a completed, paid provider report as a PDF",
+    description=(
+        "Phase 2-N: renders the stored report_html to a PDF using WeasyPrint. "
+        "Requires status=complete|partial AND payment_status=paid. "
+        "Returns application/pdf bytes with Content-Disposition: attachment."
+    ),
+)
+def get_report_pdf(report_id: str) -> Response:
+    # -- Validate UUID first (cheap, no DB required) --
+    try:
+        from uuid import UUID  # noqa: PLC0415
+        uuid_obj = UUID(report_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid report_id: must be a UUID. Got: {report_id!r}",
+        ) from exc
+
+    # -- DB required --
+    if _repo is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Report persistence not configured (REPORT_DATABASE_URL not set).",
+        )
+
+    # -- Fetch row --
+    row = _repo.get_row(uuid_obj)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Report {report_id!r} not found.",
+        )
+
+    # -- Payment gate --
+    payment_status = row.get("payment_status", "unpaid")
+    if payment_status != "paid":
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"PDF download requires a completed payment "
+                f"(payment_status={payment_status!r}). "
+                "Complete payment via POST /v1/payments/checkout."
+            ),
+        )
+
+    # -- Report-complete gate --
+    status = row.get("status", "queued")
+    if status not in ("complete", "partial"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Report is not yet complete (status={status!r}). "
+                "Poll GET /v1/reports/{report_id} until status is "
+                "'complete' or 'partial'."
+            ),
+        )
+
+    # -- HTML must be present --
+    html = row.get("report_html") or ""
+    if not html:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Report HTML is not available for this report "
+                "(may have been truncated at storage time due to size limits)."
+            ),
+        )
+
+    # -- WeasyPrint availability --
+    from report.pdf import WEASYPRINT_AVAILABLE, render_pdf  # noqa: PLC0415
+
+    if not WEASYPRINT_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "PDF generation is not available in this environment "
+                "(WeasyPrint system dependencies not installed)."
+            ),
+        )
+
+    # -- Render --
+    try:
+        pdf_bytes = render_pdf(html)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500,
+            detail=f"PDF rendering failed: {exc}",
+        ) from exc
+
+    npi = row.get("npi", "unknown")
+    filename = f"medpro-report-{npi}-{report_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Report-Id": report_id,
+            "X-Report-Npi": npi,
+        },
     )

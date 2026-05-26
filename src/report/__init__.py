@@ -26,12 +26,15 @@ from .models import (
     ReportProviderIdentity,
     ReportSourceCoverage,
 )
+from .pdf import WEASYPRINT_AVAILABLE, render_pdf
 from .renderer import render_html
 
 __all__ = [
     # core
     "build_report",
     "render_html",
+    "render_pdf",
+    "WEASYPRINT_AVAILABLE",
     # top-level model
     "ProviderReport",
     # section models

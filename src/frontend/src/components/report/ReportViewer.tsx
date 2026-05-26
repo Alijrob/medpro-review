@@ -8,6 +8,10 @@
  *
  * Security: sandbox="allow-same-origin" allows CSS to load but blocks scripts,
  * popups, and form submissions from the report content.
+ *
+ * Phase 2-N: "Download PDF" link appears when the report is complete/partial
+ * AND payment_status is 'paid'. The anchor hits the Next.js PDF proxy route
+ * which streams application/pdf bytes from the report service.
  */
 
 import { ReportStatus } from "@/lib/types";
@@ -15,6 +19,11 @@ import styles from "./report.module.css";
 
 interface ReportViewerProps {
   report: ReportStatus;
+}
+
+/** True when the report pipeline has finished (successfully or partially). */
+function isComplete(status: string): boolean {
+  return status === "complete" || status === "partial";
 }
 
 export default function ReportViewer({ report }: ReportViewerProps) {
@@ -26,8 +35,9 @@ export default function ReportViewer({ report }: ReportViewerProps) {
     );
   }
 
-  const blob = new Blob([report.report_html], { type: "text/html" });
-  const objectUrl = URL.createObjectURL(blob);
+  /** Show the PDF download link only for paid, completed reports. */
+  const showPdfLink =
+    isComplete(report.status) && report.payment_status === "paid";
 
   return (
     <div className={styles.viewerWrapper}>
@@ -44,6 +54,16 @@ export default function ReportViewer({ report }: ReportViewerProps) {
               {new Date(report.completed_at).toLocaleString()}
             </span>
           </>
+        )}
+        {showPdfLink && (
+          <a
+            href={`/api/reports/${report.report_id}/pdf`}
+            download={`medpro-report-${report.npi}.pdf`}
+            className={styles.pdfDownloadLink}
+            data-testid="pdf-download-link"
+          >
+            Download PDF
+          </a>
         )}
       </div>
       <iframe

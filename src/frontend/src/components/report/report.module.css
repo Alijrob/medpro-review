@@ -120,6 +120,25 @@
   background: #fff;
 }
 
+.pdfDownloadLink {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.pdfDownloadLink:hover {
+  background: var(--color-primary-dark);
+}
+
 .noHtml {
   padding: 40px;
   text-align: center;

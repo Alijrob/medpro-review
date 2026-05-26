@@ -303,6 +303,7 @@ def test_get_report_with_mock_repo_found(monkeypatch):
         "npi": NPI_ALICE,
         "status": "complete",
         "is_partial": False,
+        "payment_status": "paid",
         "requested_at": "2026-05-26T10:00:00+00:00",
         "started_at": "2026-05-26T10:00:05+00:00",
         "completed_at": "2026-05-26T10:01:00+00:00",
@@ -326,6 +327,202 @@ def test_get_report_with_mock_repo_found(monkeypatch):
         data = resp.json()
         assert data["npi"] == NPI_ALICE
         assert data["status"] == "complete"
+        assert data["payment_status"] == "paid"
         assert data["report"]["npi"] == NPI_ALICE
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-N: GET /v1/reports/{report_id}/pdf
+# ---------------------------------------------------------------------------
+
+_PDF_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
+_FAKE_PDF_BYTES = b"%PDF-1.4 fake-pdf-content-for-testing"
+_COMPLETE_PAID_HTML_ROW = {
+    "report_id": _PDF_ID,
+    "npi": NPI_ALICE,
+    "status": "complete",
+    "is_partial": False,
+    "payment_status": "paid",
+    "requested_at": "2026-05-26T10:00:00+00:00",
+    "started_at": "2026-05-26T10:00:05+00:00",
+    "completed_at": "2026-05-26T10:01:00+00:00",
+    "expires_at": "2026-06-25T10:00:00+00:00",
+    "temporal_workflow_id": f"report-{NPI_ALICE}-abc",
+    "sources_attempted": ["F1"],
+    "sources_succeeded": ["F1"],
+    "sources_failed": [],
+    "report": {"npi": NPI_ALICE, "is_partial": False},
+    "has_html": True,
+    "report_html": "<html><body><p>Test report</p></body></html>",
+}
+
+
+def _make_pdf_repo(row):
+    """Return a mock repo that yields the given row from get_row()."""
+    class _MockRepo:
+        def get_row(self, report_id):
+            return row
+    return _MockRepo()
+
+
+def test_get_pdf_503_when_no_db():
+    """No DATABASE_URL set -> 503."""
+    resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+    assert resp.status_code == 503
+
+
+def test_get_pdf_422_invalid_uuid():
+    resp = client.get("/v1/reports/not-a-uuid/pdf")
+    assert resp.status_code == 422
+
+
+def test_get_pdf_404_not_found(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    class _EmptyRepo:
+        def get_row(self, report_id):
+            return None
+
+    monkeypatch.setattr(route_module, "_repo", _EmptyRepo())
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 404
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_402_when_unpaid(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    row = {**_COMPLETE_PAID_HTML_ROW, "payment_status": "unpaid"}
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(row))
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 402
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_402_when_pending(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    row = {**_COMPLETE_PAID_HTML_ROW, "payment_status": "pending"}
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(row))
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 402
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_409_when_queued(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    row = {**_COMPLETE_PAID_HTML_ROW, "status": "queued"}
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(row))
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 409
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_409_when_failed(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    row = {**_COMPLETE_PAID_HTML_ROW, "status": "failed"}
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(row))
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 409
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_422_when_no_html(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+
+    row = {**_COMPLETE_PAID_HTML_ROW, "report_html": None, "has_html": False}
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(row))
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 422
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_501_when_weasyprint_unavailable(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+    import report.pdf as pdf_module  # noqa: PLC0415
+
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(_COMPLETE_PAID_HTML_ROW))
+    monkeypatch.setattr(pdf_module, "WEASYPRINT_AVAILABLE", False)
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 501
+        assert "weasyprint" in resp.json().get("detail", "").lower()
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_200_returns_pdf_bytes(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+    import report.pdf as pdf_module  # noqa: PLC0415
+
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(_COMPLETE_PAID_HTML_ROW))
+    monkeypatch.setattr(pdf_module, "WEASYPRINT_AVAILABLE", True)
+    monkeypatch.setattr(pdf_module, "render_pdf", lambda html: _FAKE_PDF_BYTES)
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 200
+        assert resp.content == _FAKE_PDF_BYTES
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_200_content_type_is_pdf(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+    import report.pdf as pdf_module  # noqa: PLC0415
+
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(_COMPLETE_PAID_HTML_ROW))
+    monkeypatch.setattr(pdf_module, "WEASYPRINT_AVAILABLE", True)
+    monkeypatch.setattr(pdf_module, "render_pdf", lambda html: _FAKE_PDF_BYTES)
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert "application/pdf" in resp.headers["content-type"]
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_200_content_disposition_is_attachment(monkeypatch):
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+    import report.pdf as pdf_module  # noqa: PLC0415
+
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(_COMPLETE_PAID_HTML_ROW))
+    monkeypatch.setattr(pdf_module, "WEASYPRINT_AVAILABLE", True)
+    monkeypatch.setattr(pdf_module, "render_pdf", lambda html: _FAKE_PDF_BYTES)
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        disposition = resp.headers.get("content-disposition", "")
+        assert "attachment" in disposition
+        assert ".pdf" in disposition
+    finally:
+        monkeypatch.setattr(route_module, "_repo", None)
+
+
+def test_get_pdf_200_partial_report_also_works(monkeypatch):
+    """status='partial' with payment_status='paid' must succeed."""
+    import backend.report_service.routes as route_module  # noqa: PLC0415
+    import report.pdf as pdf_module  # noqa: PLC0415
+
+    row = {**_COMPLETE_PAID_HTML_ROW, "status": "partial", "is_partial": True}
+    monkeypatch.setattr(route_module, "_repo", _make_pdf_repo(row))
+    monkeypatch.setattr(pdf_module, "WEASYPRINT_AVAILABLE", True)
+    monkeypatch.setattr(pdf_module, "render_pdf", lambda html: _FAKE_PDF_BYTES)
+    try:
+        resp = client.get(f"/v1/reports/{_PDF_ID}/pdf")
+        assert resp.status_code == 200
     finally:
         monkeypatch.setattr(route_module, "_repo", None)

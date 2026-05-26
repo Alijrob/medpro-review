@@ -225,7 +225,8 @@ class ReportRepository:
                            requested_at, started_at, completed_at, expires_at,
                            temporal_workflow_id,
                            sources_attempted, sources_succeeded, sources_failed,
-                           report_json, report_html
+                           report_json, report_html,
+                           payment_status
                       FROM reports
                      WHERE report_id = :rid
                     """
@@ -258,4 +259,6 @@ class ReportRepository:
             "sources_failed": list(row.sources_failed or []),
             "report": row.report_json,       # already a dict from JSONB
             "has_html": bool(row.report_html),
+            "report_html": row.report_html,  # raw HTML string (may be None)
+            "payment_status": row.payment_status,
         }
