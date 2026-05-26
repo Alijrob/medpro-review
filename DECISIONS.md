@@ -438,3 +438,42 @@ Key design choices:
 - Per-NPI DB lock: replace in-memory store with Aurora upsert + row lock in Phase 2-H.
 
 **Locked:** NPI-exact-match only (MVP), F1-anchor model, 4-tier confidence arithmetic, idempotency via source-ID dedup, batch F1-first ordering.
+
+---
+
+## Entry 027 -- Entity Linking & Merge MVP Design (C13, Phase 2-F)
+
+**Date:** 2026-05-26
+**Status:** Locked
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Build `src/entity_linker/` as a pure in-memory library that consumes a `UnifiedIdBundle` (C12 output) and all contributing `NormalizedRecord` objects for a given NPI, producing a `CanonicalProviderProfile` (schema v1). Four derived signals are computed per profile: `exclusion_flag`, `identity_confidence`, `specialty_classification`, `data_completeness`.
+
+**Key design choices:**
+
+- **Library pattern.** `src/entity_linker/` follows the same pattern as `src/normalizers/` and `src/identity/`: pure Python package, no network I/O, no DB writes, no side effects. Will become a Temporal activity in Phase 2-H.
+- **Route by `record_type` discriminator.** Records are routed to per-type extractor functions via a `_BUCKET_MAP` dict keyed on `record_type` strings (not `isinstance` checks). Adding a Phase 3 record type (state board, court) requires one line in `_BUCKET_MAP` and a new extractor function -- no changes to existing code.
+- **Extractors as pure functions.** Each extractor in `extractors.py` takes a `list[<Subtype>]` and returns profile sub-models. Stateless and independently testable.
+- **`get_specialty_group()` via F1 normalizer.** Called on the first NppesRecord to resolve the specialty group string from the I4 NUCC taxonomy crosswalk. Result stored in `MergeResult.specialty_group` and in the `specialty_classification` DerivedSignalSummary. Not a standalone profile field (profile schema has `primary_specialty: TaxonomyCode`, not a string group).
+- **Four derived signals always produced.** `exclusion_flag`, `identity_confidence`, `specialty_classification`, `data_completeness`. Signal types are a stable contract for the report renderer (C17). All four are emitted even when the relevant sources were not checked (confidence=0.0 signals the gap).
+- **COMPLETENESS_WEIGHTS rubric.** Eight weighted sections (weights sum to 1.0): identity_anchor (0.30), exclusion_checked (0.20), medicare_status (0.15), address_present (0.10), hospital_affiliation (0.10), medicaid_status (0.08), publications_checked (0.04), clinical_trials_checked (0.03). Score is the sum of weights for populated sections.
+- **`is_partial` logic.** True when `completeness_score < LINKER_COMPLETENESS_THRESHOLD_FOR_PARTIAL` (default 0.70) OR `bundle.human_review_required`. F1 + F2 + I1 + F4 = 0.75 is the minimum set that produces a non-partial profile with the default threshold.
+- **Gender pass-through.** `profile.gender = bundle.gender`. NppesRecord does not carry gender (F1 normalizer deferred `basic.gender` extraction in Phase 2-D per Entry 025). `bundle.gender` is always `Gender.UNKNOWN` until C11 adds gender extraction. No change to that deferral here.
+- **Medicare precedence.** I1 `participation_indicator` is authoritative for `accepts_medicare` and `opted_out_of_medicare`. CMS Care Compare (F4) `opted_out_of_medicare` flag is used as a fallback only when I1 is absent.
+- **Hospital affiliation deduplication.** By `(hospital_name.lower(), hospital_pac_id)` key. CMS reports one row per NPI per practice address; the same hospital may appear in many rows for the same provider. Dedup prevents duplicate `HospitalAffiliation` entries.
+- **Source coverage.** `SourceCoverage` entries grouped by `SourceCategory` (FEDERAL: F1-F4/I1/I2; ACADEMIC: A1/A2). MVP: `sources_attempted == sources_succeeded` (failed fetches are tracked in `SourceHealthRecord`, not here). Phase 2-H Temporal workflow will track attempted vs succeeded at the workflow level.
+- **`report_disclaimer_required` always True.** Path B non-CRA constraint (DECISIONS.md Entry 006). Report generation (C17) must include the personal-research-only disclaimer on every report.
+- **`MergeResult` wrapper.** Carries the profile + `RecordTypeCounts` (per-type input counts) + `merged_at` timestamp + `specialty_group` string. Metadata travels through the Temporal workflow (Phase 2-H) without being stored in the profile schema.
+- **109 new tests.** `test_extractors.py` (per-extractor), `test_signals.py` (per-signal + COMPLETENESS_WEIGHTS invariants), `test_merger.py` (EntityLinker.build_profile combinations), `test_entity_linker_integration.py` (end-to-end). 885 total passing (7 deselected integration).
+- **`entity-linker-test` Makefile target.** `.github/workflows/entity-linker-validate.yml` CI. `entity_linker` package added to pyproject.toml.
+
+**Deferred / open:**
+- Aurora persistence: `canonical_provider_profiles` table (migration 0001) is the target; deferred to Entry 003 (AWS account/region).
+- State-board records (StateBoardLicenseRecord, StateBoardDisciplinaryRecord): Phase 3-A adds extractor functions and `_BUCKET_MAP` entries.
+- Court records (CourtCaseRecord): Phase 3-C.
+- Review platform records (ReviewPlatformRecord): Phase 3-E.
+- Gender extraction from F1 `basic.gender`: requires C11 (NppesNormalizer) to add the field first. Deferred from both Entry 025 (C11) and Entry 026 (C12).
+- A1/A2 `author_position` enrichment: deferred; `author_position` is None in C11 for all P1 records.
+- `is_partial` lifecycle: Phase 2-H Temporal workflow will set `is_partial = False` when the full ingest cycle completes for a provider.
+
+**Locked:** library pattern, `record_type` discriminator routing, four derived signals, COMPLETENESS_WEIGHTS rubric, Path B `report_disclaimer_required=True`, gender pass-through from bundle.

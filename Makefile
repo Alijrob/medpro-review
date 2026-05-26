@@ -4,7 +4,7 @@
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test identity-test \
+        opa-test connectors-test normalizers-test identity-test entity-linker-test \
         help
 
 ENV ?= dev
@@ -36,6 +36,7 @@ help:
 	@echo "  connectors-test      Run Source Connector Framework tests (Phase 2-A)"
 	@echo "  normalizers-test     Run Normalization Layer tests (Phase 2-D)"
 	@echo "  identity-test        Run Identity Resolution Engine tests (Phase 2-E)"
+	@echo "  entity-linker-test   Run Entity Linking & Merge tests (Phase 2-F)"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -146,3 +147,8 @@ identity-test:
 	@echo "Testing the Identity Resolution Engine (Phase 2-E, C12)..."
 	PYTHONPATH=src poetry run pytest tests/identity/ -v 2>/dev/null || \
 		PYTHONPATH=src pytest tests/identity/ -v
+
+entity-linker-test:
+	@echo "Testing the Entity Linking & Merge Engine (Phase 2-F, C13)..."
+	PYTHONPATH=src poetry run pytest tests/entity_linker/ -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/entity_linker/ -v

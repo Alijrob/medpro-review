@@ -12,6 +12,7 @@ packages = [
     { include = "connectors", from = "src" },
     { include = "normalizers", from = "src" },
     { include = "identity", from = "src" },
+    { include = "entity_linker", from = "src" },
 ]
 
 [tool.poetry.dependencies]

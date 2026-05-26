@@ -1,0 +1,30 @@
+name: entity-linker-validate
+
+on:
+  push:
+    paths:
+      - "src/entity_linker/**"
+      - "tests/entity_linker/**"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/entity_linker/**"
+      - "tests/entity_linker/**"
+      - "pyproject.toml"
+
+jobs:
+  entity-linker-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pydantic pydantic-settings
+
+      - name: Run entity linker tests
+        run: PYTHONPATH=src pytest tests/entity_linker/ -v --tb=short
