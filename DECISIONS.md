@@ -477,3 +477,38 @@ Key design choices:
 - `is_partial` lifecycle: Phase 2-H Temporal workflow will set `is_partial = False` when the full ingest cycle completes for a provider.
 
 **Locked:** library pattern, `record_type` discriminator routing, four derived signals, COMPLETENESS_WEIGHTS rubric, Path B `report_disclaimer_required=True`, gender pass-through from bundle.
+
+---
+
+## Entry 028 -- Provider Search Service Design (C14, Phase 2-G)
+
+**Date:** 2026-05-26
+**Status:** Locked
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Build `src/search/` as a pure library plus `src/backend/search_service/` FastAPI shell (port 8003). The library converts `CanonicalProviderProfile` objects into OpenSearch documents and writes them to the `providers-{env}` index (template already shipped in Phase 1-C). The FastAPI shell exposes `GET /v1/providers/search`, `GET /v1/providers/{npi}`, and `POST /v1/providers/{npi}/index`.
+
+**Key design choices:**
+
+- **Library + service split.** `src/search/` (pure, no network I/O in isolation) vs `src/backend/search_service/` (FastAPI shell). Same pattern as `src/entity_linker/` + `src/backend/source_health_monitor/`. The library is independently testable with a mock client.
+- **httpx over opensearch-py.** Avoids a new dependency; the REST API surface needed (PUT `/_doc/{id}`, POST `/_bulk`, POST `/_search`, GET `/_doc/{id}`) is small and stable.
+- **NPI as document `_id`.** `PUT /{index}/_doc/{npi}` -- NPI is the system-wide unique key. `GET /v1/providers/{npi}` calls `client.get_doc()` (O(1) fetch), not a search query.
+- **`build_provider_doc()` pure function.** Takes `CanonicalProviderProfile`, extracts the search-facet fields (name, states, cities, zips, specialty, flags, signals), and returns a `ProviderDoc`. All list fields sorted for deterministic output.
+- **`build_search_query()` pure DSL builder.** `bool` query: `match_all` (no `q`) or `multi_match` (with `q`, `fuzziness=AUTO`, `operator=and`). Filter clauses for state, specialty_code, entity_type, has_exclusion, has_active_license. Wrapped in `function_score` with `field_value_factor` on `identity_confidence` (factor=1.5, boost_mode=multiply) to rank verified providers above partial stubs.
+- **`_source` projection on all queries.** Only the 8 fields needed by `ProviderSearchHit` are returned, keeping payload size minimal.
+- **`SearchSettings` env prefix `SEARCH_`.** Avoids collision with other service settings in local dev. `is_configured` returns False when `opensearch_url` is blank (default shell behavior pre-Entry 003).
+- **`ProviderIndexer.index_batch()`.** Sends one bulk request for a list of profiles. Parses per-item errors when `errors=True`; returns `BatchIndexResult` with per-NPI failure list.
+- **`report_count = 0` always.** The counter is not yet wired. Phase 2-J (Stripe + report pipeline) will increment it via Aurora query at index time.
+- **`overall_risk_score = 0.0` default.** The `overall_risk_score` signal is not produced by C13; it is deferred to C16 (Phase 2-J Analytics & Anomaly Detection). `_get_signal_value()` returns 0.0 when the signal is absent.
+- **108 new tests.** `test_document.py` (38 pure unit tests), `test_query.py` (28 DSL tests), `test_indexer.py` (22 mock-client tests), `test_search_service.py` (20 FastAPI TestClient tests). 993 total passing (7 deselected integration).
+- **`search-test` Makefile target.** `.github/workflows/search-validate.yml` CI. `search` package added to pyproject.toml.
+
+**Deferred / open:**
+- Live OpenSearch cluster: Entry 003 (AWS account/region) must be resolved.
+- Aurora `canonical_provider_profiles` read path: Phase 2-H Temporal workflow will call `ProviderIndexer.index_profile()` after each `EntityLinker.build_profile()` completes.
+- `overall_risk_score` signal: Phase 2-J C16 Analytics & Anomaly Detection.
+- `report_count` counter: Phase 2-J Stripe + report pipeline.
+- Async client: deferred until Phase 2-H Temporal activity wiring requires it.
+- Phase 2-K frontend integration: uses `GET /v1/providers/search` + `GET /v1/providers/{npi}`.
+
+**Locked:** library pattern + service split, httpx over opensearch-py, NPI as `_id`, pure document builder, function_score identity_confidence boost, SEARCH_ env prefix, `is_configured` shell pattern.

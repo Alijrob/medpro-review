@@ -1,10 +1,10 @@
 # Makefile — Medical Professionals Review
 
-.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-frontend lint test \
+.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-search-service run-frontend lint test \
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test identity-test entity-linker-test \
+        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test \
         help
 
 ENV ?= dev
@@ -37,6 +37,7 @@ help:
 	@echo "  normalizers-test     Run Normalization Layer tests (Phase 2-D)"
 	@echo "  identity-test        Run Identity Resolution Engine tests (Phase 2-E)"
 	@echo "  entity-linker-test   Run Entity Linking & Merge tests (Phase 2-F)"
+	@echo "  search-test          Run Provider Search Service tests (Phase 2-G)"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -63,6 +64,12 @@ run-monitor:
 	@echo "Starting source health monitor (Phase 2-C shell) on http://localhost:8002 ..."
 	@echo "Try: curl localhost:8002/healthz  |  docs at /docs"
 	PYTHONPATH=src uvicorn backend.source_health_monitor.app:app --reload --port 8002
+
+run-search-service:
+	@echo "Starting provider search service (Phase 2-G shell) on http://localhost:8003 ..."
+	@echo "Try: curl localhost:8003/healthz  |  docs at /docs"
+	@echo "     curl 'localhost:8003/v1/providers/search?q=Smith&state=CA'"
+	PYTHONPATH=src uvicorn backend.search_service.app:app --reload --port 8003
 
 run-frontend:
 	@echo "[Phase 2-K not yet built] Frontend not available yet."
@@ -152,3 +159,8 @@ entity-linker-test:
 	@echo "Testing the Entity Linking & Merge Engine (Phase 2-F, C13)..."
 	PYTHONPATH=src poetry run pytest tests/entity_linker/ -v 2>/dev/null || \
 		PYTHONPATH=src pytest tests/entity_linker/ -v
+
+search-test:
+	@echo "Testing the Provider Search Service (Phase 2-G, C14)..."
+	PYTHONPATH=src poetry run pytest tests/search/ tests/backend/test_search_service.py -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/search/ tests/backend/test_search_service.py -v

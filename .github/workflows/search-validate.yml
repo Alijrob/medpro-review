@@ -1,0 +1,37 @@
+name: search-validate
+
+on:
+  push:
+    paths:
+      - "src/search/**"
+      - "src/backend/search_service/**"
+      - "tests/search/**"
+      - "tests/backend/test_search_service.py"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/search/**"
+      - "src/backend/search_service/**"
+      - "tests/search/**"
+      - "tests/backend/test_search_service.py"
+      - "pyproject.toml"
+
+jobs:
+  search-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pydantic pydantic-settings fastapi httpx "uvicorn[standard]" pytest pytest-asyncio
+
+      - name: Run search library tests
+        run: PYTHONPATH=src pytest tests/search/ -v --tb=short
+
+      - name: Run search service backend tests
+        run: PYTHONPATH=src pytest tests/backend/test_search_service.py -v --tb=short
