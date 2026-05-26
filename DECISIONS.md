@@ -398,3 +398,43 @@ Key design choices:
 - Address normalizer hardening: postal_code 9-digit long-form (13 chars including country prefix) is handled by _clean_zip; edge cases in NPPES international addresses are out of scope.
 
 **Locked:** library pattern, 8-normalizer registry, normalize() signature with optional entity_npi, source_record_id set at C11, I4 crosswalk via get_specialty_group() helper, _parse_date() for 6 formats.
+
+---
+
+## Entry 026 — Identity Resolution MVP Design (C12, Phase 2-E)
+
+**Date:** 2026-05-26  
+**Status:** Locked  
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Build `src/identity/` as a pure in-memory library using NPI-exact-match as the sole matching strategy for the MVP. F1 (NPPES) is the identity anchor. A source-tier confidence model drives `identity_confidence` and `human_review_required` flags on `UnifiedIdBundle`.
+
+**Key design choices:**
+
+- **Library pattern.** `src/identity/` follows the same pattern as `src/normalizers/`: pure Python package, no network I/O, no deployed service, no state beyond the injected IdentityStore. Will run as Temporal activities in Phase 2-H.
+- **NPI-exact-match only (MVP).** All C11-normalized P1 records have `entity_npi` set. The NPI is the sole lookup key. Probabilistic/ML matching (Splink) is deferred to Phase 3-I.
+- **F1 (NPPES) as identity anchor.** When F1 is the first record for an NPI, full identity (name, entity_type, addresses, taxonomies, other_identifiers) is extracted. When F1 arrives for a bundle seeded by another source, it upgrades the primary identity fields. Prior stub primary_name is preserved as a name_variant if it differs and is non-trivial.
+- **Source tier confidence model.** Four tiers determine confidence contribution:
+  - Tier A (NPI-authoritative): F1 (NPPES) -- sets base confidence 0.950.
+  - Tier B (NPI-corroborating, NPI always from raw): F4, I1, I2 -- +0.015 each.
+  - Tier C (NPI-partial, NPI from raw OR entity_npi): F2 (OIG LEIE) -- +0.005.
+  - Tier D (NPI-caller, NPI always from caller-supplied entity_npi): F3, A1, A2 -- +0.000.
+  - F1 absent: max 0.750, human_review_required = True regardless of other sources.
+  - Cap: min(score, 0.999). human_review_required: score < 0.850 (configurable).
+- **Architecture target met.** F1 + F4 + I1 = 0.950 + 0.015 + 0.015 = **0.980 >= 0.98 architecture criterion** (architecture-lock.md: ">98% identity precision").
+- **Idempotency.** Resolving a source_id already in contributing_sources returns ResolutionAction.SKIPPED (no-op). Guards against double-processing in Temporal at-least-once delivery.
+- **Batch ordering.** `resolve_batch()` sorts F1 records first so the identity anchor is established before corroborating records are merged.
+- **Non-F1 first records.** Minimal stub bundle (best-available name hint, entity_type=INDIVIDUAL default) with human_review_required=True. F1 arrival upgrades the bundle.
+- **Name variant deduplication.** Normalized key `first.lower():last.lower()`. Original casing preserved in stored ProviderName. Address deduplication by (street_line_1.lower(), postal_code) tuple.
+- **gender deferred.** NppesRecord does not yet carry a gender field (F1 normalizer does not extract basic.gender). UnifiedIdBundle.gender defaults to Gender.UNKNOWN in Phase 2-E. C13 (Entity Linking & Merge) adds gender extraction in Phase 2-F.
+- **`model_copy(update=...)` pattern.** UnifiedIdBundle extends MedproBaseModel (mutable). Updates use Pydantic v2 `model_copy(update=...)` for clarity and testability.
+- **`identity-test` Makefile target.** `.github/workflows/identity-validate.yml` CI. `identity` package added to pyproject.toml.
+
+**Deferred / open:**
+- Aurora-backed IdentityStore: `unified_id_bundles` table in migration 0001 is the target; deferred to Entry 003 (AWS account/region). Row-level `SELECT ... FOR UPDATE` concurrency lands with the Aurora path.
+- Probabilistic/ML matching: Phase 3-I (Splink). Needed when state-board adapters add sources with partial NPI coverage.
+- Gender extraction from F1 basic.gender: C13 Phase 2-F.
+- Temporal worker concurrency: Phase 2-H wires these resolvers as Temporal activities.
+- Per-NPI DB lock: replace in-memory store with Aurora upsert + row lock in Phase 2-H.
+
+**Locked:** NPI-exact-match only (MVP), F1-anchor model, 4-tier confidence arithmetic, idempotency via source-ID dedup, batch F1-first ordering.

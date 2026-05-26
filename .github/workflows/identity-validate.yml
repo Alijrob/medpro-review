@@ -1,0 +1,30 @@
+name: identity-validate
+
+on:
+  push:
+    paths:
+      - "src/identity/**"
+      - "tests/identity/**"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/identity/**"
+      - "tests/identity/**"
+      - "pyproject.toml"
+
+jobs:
+  identity-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pydantic pydantic-settings
+
+      - name: Run identity tests
+        run: PYTHONPATH=src pytest tests/identity/ -v --tb=short

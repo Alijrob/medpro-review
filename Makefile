@@ -4,7 +4,7 @@
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test \
+        opa-test connectors-test normalizers-test identity-test \
         help
 
 ENV ?= dev
@@ -35,6 +35,7 @@ help:
 	@echo "  opa-test             Run OPA policy unit tests (Phase 1-H, requires opa CLI)"
 	@echo "  connectors-test      Run Source Connector Framework tests (Phase 2-A)"
 	@echo "  normalizers-test     Run Normalization Layer tests (Phase 2-D)"
+	@echo "  identity-test        Run Identity Resolution Engine tests (Phase 2-E)"
 	@echo ""
 	@echo "  NOTE: infra-plan/apply require DECISIONS.md Entry 003 to be resolved."
 	@echo "        All PLACEHOLDER values in environments/\$$ENV/env.hcl must be filled."
@@ -140,3 +141,8 @@ normalizers-test:
 	@echo "Testing the Normalization Layer (Phase 2-D, C11)..."
 	PYTHONPATH=src poetry run pytest tests/normalizers/ -v 2>/dev/null || \
 		PYTHONPATH=src pytest tests/normalizers/ -v
+
+identity-test:
+	@echo "Testing the Identity Resolution Engine (Phase 2-E, C12)..."
+	PYTHONPATH=src poetry run pytest tests/identity/ -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/identity/ -v

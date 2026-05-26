@@ -11,6 +11,7 @@ packages = [
     { include = "backend", from = "src" },
     { include = "connectors", from = "src" },
     { include = "normalizers", from = "src" },
+    { include = "identity", from = "src" },
 ]
 
 [tool.poetry.dependencies]
