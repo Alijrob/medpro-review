@@ -1,10 +1,10 @@
 # Makefile — Medical Professionals Review
 
-.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-search-service run-report-service run-worker run-frontend lint test \
+.PHONY: dev-setup run-backend run-gateway run-audit run-monitor run-search-service run-report-service run-payment-service run-worker run-frontend lint test \
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test \
+        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test payment-test \
         help
 
 ENV ?= dev
@@ -182,7 +182,20 @@ run-report-service:
 	PYTHONPATH=src poetry run uvicorn backend.report_service.app:app --host 0.0.0.0 --port 8004 --reload 2>/dev/null || \
 		PYTHONPATH=src uvicorn backend.report_service.app:app --host 0.0.0.0 --port 8004 --reload
 
+run-payment-service:
+	@echo "Starting payment service (Phase 2-J) on http://localhost:8005 ..."
+	@echo "Try: curl localhost:8005/healthz  |  docs at /docs"
+	@echo "     curl -X POST localhost:8005/v1/payments/checkout -H 'Content-Type: application/json' -d '{...}'"
+	PYTHONPATH=src poetry run uvicorn backend.payment_service.app:app --host 0.0.0.0 --port 8005 --reload 2>/dev/null || \
+		PYTHONPATH=src uvicorn backend.payment_service.app:app --host 0.0.0.0 --port 8005 --reload
+
 run-worker:
 	@echo "Starting Temporal worker (Phase 2-H, C15) -- requires WORKER_TEMPORAL_ADDRESS to be set..."
 	PYTHONPATH=src poetry run python -m workers.worker 2>/dev/null || \
 		PYTHONPATH=src python3 -m workers.worker
+
+payment-test:
+	PYTHONPATH=src poetry run pytest tests/backend/test_payment_service.py tests/data/test_migrations.py \
+		-m "not integration" -v 2>/dev/null || \
+		PYTHONPATH=src pytest tests/backend/test_payment_service.py tests/data/test_migrations.py \
+		-m "not integration" -v

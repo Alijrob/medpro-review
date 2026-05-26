@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -47,6 +47,7 @@ class TestMigrationFiles:
         assert revisions.get("0003") == "0002", "0003 must reference 0002"
         assert revisions.get("0004") == "0003", "0004 must reference 0003"
         assert revisions.get("0005") == "0004", "0005 must reference 0004"
+        assert revisions.get("0006") == "0005", "0006 must reference 0005"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()
@@ -178,6 +179,58 @@ class TestMigrationFiles:
         assert "def downgrade()" in text
         # Should drop the added columns in downgrade
         assert "drop_column" in text, "0005 downgrade must drop the added columns"
+
+    # 0006 -- Payment Columns
+    def test_0006_file_exists(self):
+        assert (MIGRATIONS_DIR / "0006_payment_columns.py").exists(), (
+            "Migration 0006 file not found"
+        )
+
+    def test_0006_adds_stripe_checkout_session_id(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert "stripe_checkout_session_id" in text, (
+            "0006 must add stripe_checkout_session_id column to reports"
+        )
+
+    def test_0006_adds_payment_status_column(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert "payment_status" in text, (
+            "0006 must add payment_status column to reports"
+        )
+
+    def test_0006_payment_status_has_default_unpaid(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert "unpaid" in text, (
+            "0006 payment_status default must be 'unpaid'"
+        )
+
+    def test_0006_payment_status_check_constraint_present(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert "ck_reports_payment_status" in text, (
+            "0006 must include CHECK constraint on payment_status"
+        )
+
+    def test_0006_allowed_payment_status_values_in_constraint(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        for value in ("unpaid", "pending", "paid", "refunded"):
+            assert value in text, f"0006 CHECK constraint must include '{value}'"
+
+    def test_0006_stripe_session_index_present(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert "ix_reports_stripe_session_id" in text, (
+            "0006 must create an index on stripe_checkout_session_id"
+        )
+
+    def test_0006_has_downgrade(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert "def downgrade()" in text
+        assert "drop_column" in text, "0006 downgrade must drop the added columns"
+
+    def test_0006_targets_reports_table(self):
+        text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
+        assert '"reports"' in text or "'reports'" in text, (
+            "0006 must operate on the reports table"
+        )
 
 
 class TestOpenSearchTemplate:

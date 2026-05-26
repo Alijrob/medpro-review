@@ -1,0 +1,46 @@
+name: Payment Service Validate
+
+on:
+  push:
+    paths:
+      - "src/backend/payment_service/**"
+      - "src/data/migrations/versions/0006_payment_columns.py"
+      - "tests/backend/test_payment_service.py"
+      - "tests/data/test_migrations.py"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/backend/payment_service/**"
+      - "src/data/migrations/versions/0006_payment_columns.py"
+      - "tests/backend/test_payment_service.py"
+      - "tests/data/test_migrations.py"
+      - "pyproject.toml"
+
+jobs:
+  payment-service-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" || pip install poetry && poetry install --no-root || pip install -r requirements.txt || true
+
+      - name: Run payment service tests
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/backend/test_payment_service.py \
+            tests/data/test_migrations.py \
+            -m "not integration" \
+            -v --tb=short
+
+      - name: Run all non-integration tests (regression guard)
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/ -m "not integration" -q --tb=short

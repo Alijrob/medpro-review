@@ -579,3 +579,38 @@ Key design choices:
 - `tos_version_at_purchase = "mvp-1.0"` placeholder: Phase 2-J versioned agreement flow.
 
 **Locked:** migration-0005 inline JSON storage, ReportRepository sync SQLAlchemy, persist_report best-effort in workflow, REPORT_ env prefix, `is_configured` gate pattern, POST /v1/reports/request always-200 with diagnostic fields.
+
+---
+
+## Entry 031 -- Payment Service MVP: Stripe Checkout Design (Phase 2-J)
+
+**Date:** 2026-05-26
+**Status:** Locked
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Phase 2-J builds `src/backend/payment_service/` (port 8005): Stripe Checkout session creation, webhook handler, PaymentRepository, and migration 0006.
+
+**Key design choices:**
+
+- **Stripe Checkout (not Payment Intents).** Stripe hosts the payment form -- zero PCI scope for the application. `POST /v1/payments/checkout` creates a Checkout session with `mode="payment"`; the client redirects the user to `checkout_url`. Simpler than Payment Intents for a one-time purchase MVP.
+- **Migration 0006 adds two columns to `reports`:** `stripe_checkout_session_id VARCHAR(200) NULL` (partial unique index for O(1) webhook lookup) and `payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid'` (CHECK constraint: unpaid|pending|paid|refunded). Payment state is tracked separately from pipeline `status` -- a report can be `status='complete'` with `payment_status='unpaid'` (free tier / operator) or `payment_status='paid'` (standard consumer flow).
+- **Session metadata carries `report_id`, `npi`, `certified_personal_use_only="true"`.** The webhook handler reads `report_id` from metadata (fallback for the case where `stripe_checkout_session_id` was not stored in the DB due to a transient error). Metadata is baked in at session creation time and is immutable.
+- **`certified_personal_use_only` validated at checkout creation time.** The Pydantic `CheckoutRequest` model raises a 422 if the field is `False`. This is the Path B gate at the payment layer. The flag is stored in session metadata so the webhook can create the `use_agreements` row with `certified_personal_use_only=True`.
+- **Use agreements created in the webhook handler.** The `use_agreements` row is written when `checkout.session.completed` fires (user has completed payment). `agreed_at` = webhook receipt time. `ip_address` = None (Stripe webhook IP; no user IP available). `user_agent = "Stripe/1.0 (webhook)"`. Phase 2-K will add a pre-checkout agreement endpoint that captures the real user IP.
+- **User upsert by email (INSERT ON CONFLICT DO NOTHING).** The webhook creates a minimal `users` row from `session.customer_email` if one does not exist. `auth_provider_sub` is left NULL -- Phase 2-K links the Auth0 account. Email uniqueness constraint on `users` is the idempotency anchor.
+- **Idempotent webhook handler.** Before processing `checkout.session.completed`, check `payment_status`. If already `'paid'`, return `action='skipped'` immediately. Prevents double-charging or double-creating use_agreements on Stripe retry.
+- **Webhook signature verification fails hard (400).** `stripe.Webhook.construct_event()` raises `SignatureVerificationError` on bad signatures. Return 400 so Stripe knows the event was rejected and can retry with the same payload. Permanent 400s (invalid JSON, missing report_id) are also returned as 400.
+- **DB errors in webhook return 200.** A RuntimeError inside the DB operations returns `action='error'` with status 200. This prevents Stripe from infinite retry of a fundamentally broken state. The event must be re-processed by an ops engineer via the Stripe dashboard event log.
+- **Stripe not configured = graceful degradation.** When `PAYMENT_STRIPE_SECRET_KEY` is empty, `POST /v1/payments/checkout` returns a mock checkout URL with `stripe_configured=False`. The service starts and the health endpoints work without any Stripe credentials.
+- **PAYMENT_ env prefix.** `PaymentServiceSettings` uses `PAYMENT_` to avoid collision. `PAYMENT_DATABASE_URL` falls back to `DATABASE_URL` (same pattern as `ReportServiceSettings`).
+- **`stripe` Python SDK (v10+).** Added as a main dependency in `pyproject.toml`. Lazy-imported in routes.py (`_stripe_module()`) so the service can import and start even if stripe is not installed (returns None = unconfigured path).
+
+**Deferred / open:**
+- Live Aurora DB: Entry 003 (AWS account/region). Integration tests for PaymentRepository are not yet written.
+- `user_id` / `use_agreement_id` NOT NULL constraint re-enforcement: Phase 2-K when auth is wired.
+- `tos_version_at_purchase` on the reports row: currently `"mvp-1.0"` (set by ReportRepository at row creation). Phase 2-J sets `TOS_VERSION` on use_agreements; the reports row version placeholder is NOT updated here -- that alignment deferred to Phase 2-K when a versioned ToS flow lands.
+- Phase 2-K: pre-checkout use-agreement endpoint that captures user IP + user_agent before Stripe redirect.
+- Stripe Customer Portal (subscription management): Phase 5-G.
+- Refund handling: Phase 5-G.
+
+**Locked:** Stripe Checkout mode, session metadata for webhook lookup, migration-0006 column names + CHECK constraint, PAYMENT_ env prefix, idempotent webhook handler, DB errors = 200 in webhook, lazy stripe import pattern, PaymentRepository sync SQLAlchemy text() operations.
