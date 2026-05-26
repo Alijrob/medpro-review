@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -49,6 +49,7 @@ class TestMigrationFiles:
         assert revisions.get("0005") == "0004", "0005 must reference 0004"
         assert revisions.get("0006") == "0005", "0006 must reference 0005"
         assert revisions.get("0007") == "0006", "0007 must reference 0006"
+        assert revisions.get("0008") == "0007", "0008 must reference 0007"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()
@@ -280,6 +281,68 @@ class TestMigration0007:
         assert "state_board" in text, (
             "0007 seeded rows must use 'state_board' as source_category"
         )
+
+
+class TestMigration0008:
+    """Migration 0008 -- Phase 3-B state board seed rows (GA/PA/OH/MI/NC)."""
+
+    def test_0008_file_exists(self):
+        assert (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").exists(), (
+            "Migration 0008 file not found"
+        )
+
+    def test_0008_references_0007(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        assert 'down_revision' in text and '"0007"' in text, (
+            "0008 must reference 0007 as down_revision"
+        )
+
+    def test_0008_seeds_all_five_phase3b_state_boards(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        for source_id in ("state_board_ga", "state_board_pa", "state_board_oh",
+                          "state_board_mi", "state_board_nc"):
+            assert source_id in text, f"0008 must seed '{source_id}'"
+
+    def test_0008_does_not_seed_phase3a_boards(self):
+        """Phase 3-A boards (CA/NY/TX/FL/IL) must not be re-seeded in 0008."""
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        for source_id in ("state_board_ca", "state_board_ny", "state_board_tx",
+                          "state_board_fl", "state_board_il"):
+            assert source_id not in text, (
+                f"0008 must not duplicate {source_id} (already seeded in 0007)"
+            )
+
+    def test_0008_uses_on_conflict_do_nothing(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        assert "ON CONFLICT" in text.upper() and "DO NOTHING" in text.upper(), (
+            "0008 seed INSERT must be idempotent (ON CONFLICT DO NOTHING)"
+        )
+
+    def test_0008_targets_source_health_records(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        assert "source_health_records" in text, (
+            "0008 must INSERT into source_health_records"
+        )
+
+    def test_0008_sets_state_board_category(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        assert "state_board" in text, (
+            "0008 seeded rows must use 'state_board' as source_category"
+        )
+
+    def test_0008_has_downgrade(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        assert "def downgrade()" in text
+        assert "DELETE" in text.upper(), "0008 downgrade must DELETE the seeded rows"
+
+    def test_0008_downgrade_targets_phase3b_ids_only(self):
+        text = (MIGRATIONS_DIR / "0008_state_board_seeds_batch2.py").read_text()
+        downgrade_section = text.split("def downgrade()")[1]
+        for source_id in ("state_board_ga", "state_board_pa", "state_board_oh",
+                          "state_board_mi", "state_board_nc"):
+            assert source_id in downgrade_section, (
+                f"0008 downgrade must reference '{source_id}'"
+            )
 
 
 class TestOpenSearchTemplate:

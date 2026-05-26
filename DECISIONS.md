@@ -812,3 +812,85 @@ names the file correctly.
 
 **Locked:** soft-import pattern, gate order (UUID -> DB -> payment -> status -> html -> WeasyPrint),
 Next.js proxy timeout 30s, filename pattern `medpro-report-{npi}-{id[:8]}.pdf`.
+
+---
+
+## Entry 037 -- State Board Adapter Design: Phase 3-B (GA/PA/OH/MI/NC)
+
+**Date:** 2026-05-26
+**Component:** C10 (Source Connectors), Phase 3-B
+**Status:** Locked
+
+### Decision
+
+Build 5 more `SourceConnector` subclasses for the next-highest physician-population
+states (ranked by AMA/FSMB licensed physician count): GA, PA, OH, MI, NC.
+Migration 0008 seeds 5 new `source_health_records` rows using the same `state_board_*`
+namespace and `ON CONFLICT DO NOTHING` idempotency pattern established in 0007.
+
+### Integration Methods
+
+| State | Source | Method | Source ID |
+|-------|--------|--------|-----------|
+| GA | GA Composite Medical Board (data.georgia.gov) | REST_API (SODA) | state_board_ga |
+| PA | PA State Medical Board (data.pa.gov) | REST_API (SODA) | state_board_pa |
+| OH | Ohio State Medical Board (elicense.ohio.gov) | REST_API (offset/limit) | state_board_oh |
+| MI | Michigan LARA BPL (data.michigan.gov) | REST_API (SODA) | state_board_mi |
+| NC | North Carolina Medical Board (ncmedboard.org) | REST_API (page-number) | state_board_nc |
+
+### Integration Method Rationale
+
+- **GA, PA, MI**: All three states publish professional license data on Socrata-backed
+  OpenData portals (data.georgia.gov, data.pa.gov, data.michigan.gov). SODA 2.0 with
+  `$limit/$offset/$order=:id` is the natural pattern -- same as NY (3-A) and the F4/I1/I2
+  federal adapters. Short-page sentinel for termination; no envelope (SODA response IS
+  the array).
+- **OH**: Ohio's eLicense portal (elicense.ohio.gov) uses a standard offset/limit JSON API
+  without a Socrata wrapper. Same termination pattern as FL DOH (3-A). Response may be
+  bare list or dict-wrapped (`providers`, `results`, `data`).
+- **NC**: North Carolina Medical Board uses page-number pagination (same pattern as TX
+  Medical Board, 3-A). Terminates on empty-array response OR short page. Response may be
+  bare list or dict-wrapped (`data`, `licenses`, `results`, `providers`).
+
+### Field Normalization
+
+All 5 adapters carry a `_FIELD_MAP: dict[str, str]` mapping known API field name variants
+(camelCase, PascalCase, SODA column names like `lic_no`, `lname`, `fname`, `exp_date`)
+to contract snake_case names. Unknown keys pass through as extra fields. This mirrors the
+3-A adapter pattern and tolerates superficial API changes in casing conventions without
+false-positive SCHEMA_DRIFT events.
+
+### Schema Contracts
+
+All 5 adapters use 6-field contracts:
+
+| State | Contract Fields |
+|-------|----------------|
+| GA | license_number, last_name, first_name, license_type, license_status, expiration_date |
+| PA | license_number, last_name, first_name, license_type, license_status, expiration_date |
+| OH | license_number, last_name, first_name, license_type, license_status, expiration_date |
+| MI | license_number, last_name, first_name, license_type, license_status, expiration_date |
+| NC | license_number, last_name, first_name, license_status, expiration_date, specialty |
+
+NC uses `specialty` instead of `license_type` (NCMB records include a specialty designation,
+matching the TX Medical Board adapter contract shape from 3-A).
+
+### Migration 0008
+
+Seeds 5 rows into `source_health_records` (status=unknown, category=state_board).
+Chains from 0007. `ON CONFLICT DO NOTHING` for idempotency. Downgrade DELETEs only
+the 5 phase-3-B source IDs -- does not touch the 3-A rows seeded by 0007.
+
+### Tests
+
+83 new tests total (1513 passing, up from 1430):
+- 5 adapter test files (~15-17 tests each): config identity, contract harness,
+  pagination (SODA or page-number or offset, termination modes), field normalization
+  (column name variants and dict-wrapped response unwrapping), failure modes (drift,
+  non-JSON, non-list)
+- 9 migration tests for 0008 in `test_migrations.py` (file existence, chain, 5 seed
+  rows, no 3-A duplication, idempotency, downgrade)
+
+**Locked:** GA/PA/MI=SODA, OH=offset/limit, NC=page-number; all dataset IDs are
+placeholder defaults -- verify against live portals before ingest; `state_board_*`
+namespace continues; migration 0008 chains from 0007.
