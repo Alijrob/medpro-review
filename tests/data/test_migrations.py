@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -48,6 +48,7 @@ class TestMigrationFiles:
         assert revisions.get("0004") == "0003", "0004 must reference 0003"
         assert revisions.get("0005") == "0004", "0005 must reference 0004"
         assert revisions.get("0006") == "0005", "0006 must reference 0005"
+        assert revisions.get("0007") == "0006", "0007 must reference 0006"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()
@@ -230,6 +231,54 @@ class TestMigrationFiles:
         text = (MIGRATIONS_DIR / "0006_payment_columns.py").read_text()
         assert '"reports"' in text or "'reports'" in text, (
             "0006 must operate on the reports table"
+        )
+
+
+class TestMigration0007:
+    """Migration 0007 -- State Board seed rows in source_health_records."""
+
+    def test_0007_file_exists(self):
+        assert (MIGRATIONS_DIR / "0007_state_board_seeds.py").exists(), (
+            "Migration 0007 file not found"
+        )
+
+    def test_0007_references_0006(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        assert 'down_revision' in text and '"0006"' in text, (
+            "0007 must reference 0006 as down_revision"
+        )
+
+    def test_0007_seeds_all_five_state_boards(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        for source_id in ("state_board_ca", "state_board_ny", "state_board_tx",
+                          "state_board_fl", "state_board_il"):
+            assert source_id in text, f"0007 must seed '{source_id}'"
+
+    def test_0007_uses_on_conflict_do_nothing(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        assert "ON CONFLICT" in text.upper() and "DO NOTHING" in text.upper(), (
+            "0007 seed INSERT must be idempotent (ON CONFLICT DO NOTHING)"
+        )
+
+    def test_0007_targets_source_health_records(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        assert "source_health_records" in text, (
+            "0007 must INSERT into source_health_records"
+        )
+
+    def test_0007_has_downgrade(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        assert "def downgrade()" in text
+        assert "DELETE" in text.upper(), "0007 downgrade must DELETE the seeded rows"
+
+    def test_0007_downgrade_targets_state_board_ids(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        assert "state_board_ca" in text, "0007 downgrade must reference state_board_ca"
+
+    def test_0007_sets_state_board_category(self):
+        text = (MIGRATIONS_DIR / "0007_state_board_seeds.py").read_text()
+        assert "state_board" in text, (
+            "0007 seeded rows must use 'state_board' as source_category"
         )
 
 

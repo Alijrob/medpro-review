@@ -21,8 +21,27 @@ Phase 2-B federal batch (T1/L0 open-data, see docs/reference/source-priority.md)
     I4  NPPES Specialty Crosswalk -- connectors.sources.nppes_taxonomy           (built, 2-B.7)
     A1  PubMed / NCBI Entrez     -- connectors.sources.pubmed                    (built, 2-B.8)
     A2  ClinicalTrials.gov       -- connectors.sources.clinical_trials           (built, 2-B.9)
+
+Phase 3-A state board batch (P2 sources, see docs/reference/source-priority.md):
+    S1  CA Medical Board         -- connectors.sources.state_boards.ca_medical_board (built, 3-A)
+    S2  NY NYSED OP              -- connectors.sources.state_boards.ny_op_nysed      (built, 3-A)
+    S3  TX Medical Board         -- connectors.sources.state_boards.tx_medical_board (built, 3-A)
+    S4  FL DOH FDBPR             -- connectors.sources.state_boards.fl_doh           (built, 3-A)
+    S5  IL IDFPR                 -- connectors.sources.state_boards.il_idfpr         (built, 3-A)
 """
 from .clinical_trials import ClinicalTrialsConnector, clinical_trials_config
+from .state_boards import (
+    CaMedicalBoardConnector,
+    ca_medical_board_config,
+    FlDohConnector,
+    fl_doh_config,
+    IlIdfprConnector,
+    il_idfpr_config,
+    NyMedicalBoardConnector,
+    ny_op_nysed_config,
+    TxMedicalBoardConnector,
+    tx_medical_board_config,
+)
 from .cms_care_compare import CmsCareCompareConnector, cms_care_compare_config
 from .cms_medicaid_enrollment import (
     CmsMedicaidEnrollmentConnector,
@@ -68,4 +87,19 @@ __all__ = [
     # A2 -- ClinicalTrials.gov
     "ClinicalTrialsConnector",
     "clinical_trials_config",
+    # S1 -- CA Medical Board
+    "CaMedicalBoardConnector",
+    "ca_medical_board_config",
+    # S2 -- NY NYSED Office of Professions
+    "NyMedicalBoardConnector",
+    "ny_op_nysed_config",
+    # S3 -- Texas Medical Board
+    "TxMedicalBoardConnector",
+    "tx_medical_board_config",
+    # S4 -- Florida DOH FDBPR
+    "FlDohConnector",
+    "fl_doh_config",
+    # S5 -- Illinois IDFPR
+    "IlIdfprConnector",
+    "il_idfpr_config",
 ]

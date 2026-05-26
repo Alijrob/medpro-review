@@ -713,3 +713,46 @@ Key design choices:
 - `MockState.reportCallCount` simulates the `pending -> complete` polling transition without real waiting.
 
 **Locked:** `@playwright/test ^1.44`, chromium-only in CI, `page.route()` intercepts, `storageState` auth pattern, fixture JSON in `tests/e2e/fixtures/`.
+
+## Entry 035 -- State Board Adapter Design: Source ID Namespace + CSV vs REST (Phase 3-A)
+
+**Date:** 2026-05-26
+**Status:** Locked
+
+### Source ID Namespace
+
+State board sources use the `state_board_*` prefix (e.g. `state_board_ca`, `state_board_ny`) to
+avoid collision with Phase 2-B federal source IDs (F1-F4, I1-I2, A1-A2). The prefix is also used
+as the `source_category` value in `source_health_records` (`'state_board'` vs `'federal'`).
+
+### Integration Method per State
+
+| State | Method | Rationale |
+|-------|--------|-----------|
+| CA | BULK_DOWNLOAD | DCA publishes a complete physician CSV; one request per run is simpler and more complete than paginated lookups |
+| NY | REST_API (SODA 2.0) | NYSED publishes via NY OpenData Socrata; same $limit/$offset/$order pattern reused from F4/I1/I2 |
+| TX | REST_API (page-number) | TMB public JSON API uses page=N pagination; terminates on empty array |
+| FL | REST_API (offset/limit) | FL DOH MQA API uses standard offset pagination; short-page sentinel |
+| IL | REST_API (offset/limit) | IDFPR license API uses offset/limit; response may be bare list or dict-wrapped |
+
+### Field Normalization Strategy
+
+All REST adapters carry a `_FIELD_MAP: dict[str, str]` that maps known API field name variants
+(camelCase, PascalCase, UPPERCASE) to contract snake_case names. Unknown keys pass through as
+extra fields (not dropped). This allows the contract validator to fire on genuinely missing fields
+while tolerating superficial API changes in casing convention.
+
+The CA CSV adapter uses `_CSV_FIELD_MAP` for the same purpose (DCA has varied column names across
+bulk file releases).
+
+### Migration 0007
+
+Adds 5 seed rows to `source_health_records` (one per state board) at migration time so C24
+(Source Health Monitor) has existing rows to update rather than inserting on first contact.
+Uses `ON CONFLICT (source_id) DO NOTHING` for idempotency.
+
+### LEGAL GATE Note
+
+All adapters are tested stub-only. Live ingest requires the Phase 0 FCRA determination.
+
+**Locked:** `state_board_*` source ID namespace, CA=BULK_DOWNLOAD, NY/TX/FL/IL=REST_API, `_FIELD_MAP` normalization pattern, migration 0007 seeding pattern.

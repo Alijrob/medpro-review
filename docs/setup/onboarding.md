@@ -259,6 +259,13 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 | `tests/connectors/test_sam_gov.py` | 15 SAM.gov tests (identity, contract harness, pagination stop modes, schema drift x3, non-JSON/503/401 failure modes) |
 | `src/connectors/sources/cms_care_compare.py` | **CMS Care Compare adapter (F4, 2-B.4)** -- `CmsCareCompareConnector` SODA paged JSON + `cms_care_compare_config()`; configurable dataset_id; one-row-per-location |
 | `tests/connectors/test_cms_care_compare.py` | 17 CMS tests (identity, contract harness, pagination x5 incl. exact-page+empty, multi-NPI rows, schema drift x3, extra fields, non-JSON/non-list/503) |
+| `src/connectors/sources/state_boards/` | **Phase 3-A state board adapters (P2 sources)** -- 5 adapters, source_id prefix `state_board_*`. CA=BULK_DOWNLOAD (DCA CSV, 7-field contract); NY=REST_API SODA (6-field); TX=REST_API page-number (6-field); FL=REST_API offset (6-field); IL=REST_API offset (5-field). `_FIELD_MAP` per adapter normalizes API casing variants to snake_case. All tested stub-only; live ingest behind legal gate. |
+| `src/data/migrations/versions/0007_state_board_seeds.py` | Migration 0007 -- seeds 5 `source_health_records` rows (state_board_ca/ny/tx/fl/il, status=unknown, category=state_board). Chains from 0006. ON CONFLICT DO NOTHING (idempotent). |
+| `tests/connectors/test_ca_medical_board.py` | 16 CA tests (config, contract harness, CSV normalization x4 including space-separated headers, extra columns, bulk-makes-1-request, drift note: CSV header absence triggers drift) |
+| `tests/connectors/test_ny_op_nysed.py` | 14 NY tests (config, contract harness, SODA pagination x4, drift, non-list/non-JSON failure) |
+| `tests/connectors/test_tx_medical_board.py` | 15 TX tests (config, contract harness, page-number pagination x3, camelCase normalization, dict-wrapped response, drift, non-JSON failure) |
+| `tests/connectors/test_fl_doh.py` | 16 FL tests (config, contract harness, offset pagination x3, mixed-case normalization, providers/results key unwrap, drift, failure modes) |
+| `tests/connectors/test_il_idfpr.py` | 17 IL tests (config, contract harness, offset pagination x3, uppercase+camelCase normalization, licenses/records/data key unwrap, drift, failure modes) |
 | `docs/session-logs/` | Per-session build logs |
 
 ---
@@ -275,11 +282,17 @@ All secrets managed via AWS Secrets Manager + Kubernetes External Secrets Operat
 
 ## Next Likely Step
 
-**Phase 2-B.5:** CMS Medicare Physician Enrollment adapter (source I1) -- Medicare participation and opt-out status. CC0, `data.cms.gov` SODA API (same pattern as F4). Bulk download monthly. Includes the opt-out list (high-value red flag signal). T1/L0 open-data; live ingestion stays governed by the Phase 0 legal gate.
+**Phase 2-N:** PDF Report Generation -- add `GET /v1/reports/{report_id}/pdf` to the report service (WeasyPrint); gated on status=complete + payment_status=paid; Next.js proxy route + "Download PDF" anchor in `ReportViewer.tsx`.
 
-**Phase 2-B.1 through 2-B.4 adapters + the 2-A framework validate locally (no network -- transports stubbed):**
+**Phase 3-A state board adapters validate locally (no network -- transports stubbed):**
 ```bash
-make connectors-test                              # or: PYTHONPATH=src pytest tests/connectors/ -v  (79 tests: 21 framework + 14 nppes + 12 oig-leie + 15 sam-gov + 17 cms)
+PYTHONPATH=src pytest tests/connectors/test_ca_medical_board.py tests/connectors/test_ny_op_nysed.py tests/connectors/test_tx_medical_board.py tests/connectors/test_fl_doh.py tests/connectors/test_il_idfpr.py -v
+# Expected: 76 passed
+```
+
+**All connectors validate locally (no network -- transports stubbed):**
+```bash
+make connectors-test                              # or: PYTHONPATH=src pytest tests/connectors/ -v  (~155 tests total)
 ```
 
 **Phase 1-I audit service validates locally (no DB/cluster needed):**
