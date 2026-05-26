@@ -614,3 +614,39 @@ Key design choices:
 - Refund handling: Phase 5-G.
 
 **Locked:** Stripe Checkout mode, session metadata for webhook lookup, migration-0006 column names + CHECK constraint, PAYMENT_ env prefix, idempotent webhook handler, DB errors = 200 in webhook, lazy stripe import pattern, PaymentRepository sync SQLAlchemy text() operations.
+
+---
+
+## Entry 032 -- Frontend Phase 1: Next.js App Router Design (Phase 2-K)
+
+**Date:** 2026-05-26
+**Status:** Locked
+**Author:** Claude (session 2026-05-26)
+
+**Decision:** Phase 2-K builds `src/frontend/` -- the Next.js 14 App Router frontend for researchyourdoctor.com. Covers Auth0 login, Path B certification gate, provider search, and report viewer with Stripe payment gate.
+
+**Key design choices:**
+
+- **Next.js 14 App Router (not Pages Router).** App Router is the current Next.js standard. Server Components reduce client bundle size; server-side getSession() for auth checks is cleaner than Pages Router getServerSideProps.
+- **`@auth0/nextjs-auth0` v3.** App Router compatible. `handleAuth()` exports GET handler for the `[...auth0]` catch-all route. `getSession()` works in Server Components. `withMiddlewareAuthRequired()` for route protection in middleware.ts.
+- **API Route proxy layer.** Browser never calls backend services directly. All calls go through `/api/*` Next.js routes which: (1) verify Auth0 session, (2) forward to the appropriate backend service with a request-id header, (3) return the response. This eliminates CORS configuration on the backend, keeps service URLs server-only, and provides a natural auth enforcement point.
+- **Server-only env vars for backend URLs.** `SEARCH_SERVICE_URL`, `REPORT_SERVICE_URL`, `PAYMENT_SERVICE_URL` have no `NEXT_PUBLIC_` prefix -- they never reach the browser bundle. Defaults to localhost ports for local dev.
+- **TanStack Query v5 for client-side fetching.** Used in search page (query enabled when query string non-empty) and ReportStatusPoller (refetchInterval stops when terminal status reached). `QueryProvider` wraps the app client-side. Server Components use direct fetch; client components use useQuery.
+- **CSS Modules for styling.** No external UI library. Avoids introducing an unlocked dependency. Each component/page has a co-located `.module.css`. Global CSS variables defined in `globals.css` for color/spacing tokens.
+- **Zod for runtime validation.** All API responses are parsed through Zod schemas at the proxy boundary. TypeScript types are inferred from schemas -- no manual interface duplication. `ApiError` class carries HTTP status for client-side error display.
+- **Path B certification as session cookie.** The frontend shows a `/certify` page after login. Clicking "I Certify" sets a `medpro_path_b_certified` cookie client-side and redirects to `/search`. The legally binding `use_agreements` DB row is written at payment completion (Phase 2-J webhook), not at this UI step. The cookie gate is a UX mechanism, not a legal enforcement mechanism.
+- **ReportStatusPoller.** TanStack Query `refetchInterval` polls GET /api/reports/{id} every 3 seconds until status is `complete` or `failed`. Once terminal, polling stops. Shows loading spinner during generation, PaymentGate for unpaid complete reports, ReportViewer for paid reports.
+- **ReportViewer uses sandboxed iframe.** The report HTML (Jinja2-rendered from Phase 2-H) is rendered in an iframe with `sandbox="allow-same-origin"` to prevent report content from executing scripts or submitting forms in the parent page context.
+- **PaymentGate calls checkout proxy.** `POST /api/payments/checkout` with `certified_personal_use_only: true` (always; user already passed the certify gate). On success, `window.location.href = checkout_url` redirects to Stripe. On failure, error is displayed inline. Stripe not configured (dev mode) returns a mock URL.
+- **Port 3100.** Frontend dev server runs on :3100 (not :3000) to avoid collisions with other local services. AUTH0_BASE_URL must match in .env.local.
+- **Jest + React Testing Library.** 35 tests across: Zod schema parsing (types.test.ts), SearchBar behavior, ProviderCard rendering/interaction, PaymentGate checkout flow, ReportViewer conditional rendering.
+
+**Deferred / open:**
+- Live deployment: Entry 003 (AWS EKS) + legal gate.
+- Auth0 tenant creation: Entry 002 locked Auth0 as provider; tenant not yet provisioned.
+- `/terms` page linked from certify page: stub (404) until legal copy is drafted.
+- Stripe success/cancel return URL handling: after Stripe checkout, user is redirected back to the report page. The URL must be configured in the Stripe Checkout session (report service, Phase 2-J). Currently the payment service hardcodes a placeholder success URL -- Phase 5-G will wire this properly.
+- `user_id` / `auth_provider_sub` linking: the webhook creates a `users` row by email with `auth_provider_sub = NULL`. Phase 2-K does not yet link the Auth0 `sub` claim to the DB user. This alignment is deferred to the next session.
+- Auth0 JWT audience wiring: the frontend Auth0 app and the backend JWKS validation (Phase 1-F) use the same Auth0 tenant. The `AUTH0_AUDIENCE` env var must match between the two when the tenant is provisioned.
+
+**Locked:** Next.js 14 App Router, @auth0/nextjs-auth0 v3, API Route proxy pattern, CSS Modules, TanStack Query v5, Zod schema validation, port 3100, Path B cookie gate, iframe sandbox for report HTML.

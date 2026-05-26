@@ -4,7 +4,7 @@
         infra-init infra-validate infra-plan infra-apply infra-fmt \
         obs-validate \
         gitops-validate gitops-guard \
-        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test payment-test \
+        opa-test connectors-test normalizers-test identity-test entity-linker-test search-test report-test worker-test payment-test frontend-test \
         help
 
 ENV ?= dev
@@ -17,7 +17,7 @@ help:
 	@echo "  run-gateway          Start the API gateway dev server (Phase 1-G)"
 	@echo "  run-audit            Start the audit ledger service dev server (Phase 1-I)"
 	@echo "  run-monitor          Start the source health monitor dev server (Phase 2-C)"
-	@echo "  run-frontend         Start Next.js frontend dev server (Phase 2-K+)"
+	@echo "  run-frontend         Start Next.js frontend dev server (Phase 2-K, port 3100)"
 	@echo "  lint                 Run all linters (Python: black/flake8/mypy; TS: eslint/prettier)"
 	@echo "  test                 Run all tests (pytest + jest)"
 	@echo ""
@@ -72,7 +72,9 @@ run-search-service:
 	PYTHONPATH=src uvicorn backend.search_service.app:app --reload --port 8003
 
 run-frontend:
-	@echo "[Phase 2-K not yet built] Frontend not available yet."
+	@echo "Starting Next.js frontend (Phase 2-K) on http://localhost:3100 ..."
+	@echo "Copy src/frontend/.env.local.example to src/frontend/.env.local and fill in Auth0 credentials first."
+	cd src/frontend && npm run dev
 
 lint:
 	cd src/backend && poetry run black --check . && poetry run flake8 . && poetry run mypy . 2>/dev/null || \
@@ -199,3 +201,7 @@ payment-test:
 		-m "not integration" -v 2>/dev/null || \
 		PYTHONPATH=src pytest tests/backend/test_payment_service.py tests/data/test_migrations.py \
 		-m "not integration" -v
+
+frontend-test:
+	@echo "Running frontend tests (Jest + React Testing Library) -- Phase 2-K..."
+	cd src/frontend && npm test
