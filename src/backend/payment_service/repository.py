@@ -227,6 +227,50 @@ class PaymentRepository:
         log.debug("PaymentRepository.upsert_user: email=%s user_id=%s", email, canonical_id)
         return canonical_id
 
+    def link_auth_sub(self, email: str, auth_provider_sub: str) -> "UUID | None":
+        """
+        Link an Auth0 sub to an existing users row identified by email.
+
+        UPDATE users SET auth_provider_sub = :sub WHERE email = :email
+            AND auth_provider_sub IS NULL
+
+        Idempotent: if auth_provider_sub is already set to the same value,
+        the UPDATE is a no-op and we still return the user_id.
+
+        Returns the user_id UUID if the row exists (whether or not the UPDATE
+        changed anything), or None if no row with that email is found.
+        """
+        if self._engine is None:
+            raise RuntimeError("PaymentRepository: database not configured.")
+
+        with self._engine.begin() as conn:
+            conn.execute(
+                sa.text(
+                    """
+                    UPDATE users
+                       SET auth_provider_sub = :sub
+                     WHERE email = :email
+                       AND auth_provider_sub IS NULL
+                    """
+                ),
+                {"sub": auth_provider_sub, "email": email},
+            )
+            row = conn.execute(
+                sa.text("SELECT user_id FROM users WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
+
+        if row is None:
+            log.debug("PaymentRepository.link_auth_sub: no user found for email=%s", email)
+            return None
+
+        canonical_id = UUID(str(row.user_id))
+        log.debug(
+            "PaymentRepository.link_auth_sub: email=%s user_id=%s sub=%s",
+            email, canonical_id, auth_provider_sub,
+        )
+        return canonical_id
+
     # ------------------------------------------------------------------
     # use_agreements table
     # ------------------------------------------------------------------

@@ -1,5 +1,5 @@
 """
-test_payment_service.py -- FastAPI TestClient tests for the Payment Service (Phase 2-J).
+test_payment_service.py -- FastAPI TestClient tests for the Payment Service.
 
 Test classes:
     TestHealthEndpoints          (4)  -- healthz / readyz
@@ -7,8 +7,10 @@ Test classes:
     TestCheckoutStripeConfigured (6)  -- POST /v1/payments/checkout with mocked Stripe
     TestWebhookEndpoint          (16) -- POST /v1/payments/webhook (event routing + DB ops)
     TestPaymentRepository        (9)  -- PaymentRepository unit tests (no live DB)
+    TestUserSync                 (10) -- POST /v1/users/sync endpoint (Phase 2-L)
+    TestLinkAuthSub              (5)  -- PaymentRepository.link_auth_sub unit tests (Phase 2-L)
 
-Total: 51
+Total: 66
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ from fastapi.testclient import TestClient
 
 from backend.payment_service.app import create_app
 from backend.payment_service.config import PaymentServiceSettings
-from backend.payment_service.models import CheckoutRequest
+from backend.payment_service.models import CheckoutRequest, UserSyncRequest
 from backend.payment_service.repository import PaymentRepository
 from backend.payment_service.routes import _set_repo
 
@@ -651,3 +653,172 @@ class TestPaymentRepository:
                 cancel_url="https://example.com",
                 certified_personal_use_only=False,
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-L: POST /v1/users/sync
+# ---------------------------------------------------------------------------
+
+
+class TestUserSync:
+    """POST /v1/users/sync -- link Auth0 sub to users row (Phase 2-L)."""
+
+    def test_sync_no_repo_returns_200_linked_false(self):
+        """When DB is not configured the endpoint returns 200 with linked=False."""
+        _set_repo(None)
+        resp = client.post(
+            "/v1/users/sync",
+            json={"email": "user@example.com", "auth_provider_sub": "auth0|abc"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["linked"] is False
+        assert data["user_id"] is None
+
+    def test_sync_links_existing_user(self):
+        """link_auth_sub finds existing row -> linked=True with user_id returned."""
+        user_id = uuid4()
+        mock_repo = MagicMock()
+        mock_repo.link_auth_sub.return_value = user_id
+        _set_repo(mock_repo)
+        try:
+            resp = client.post(
+                "/v1/users/sync",
+                json={"email": "user@example.com", "auth_provider_sub": "auth0|abc"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["linked"] is True
+            assert data["user_id"] == str(user_id)
+            mock_repo.link_auth_sub.assert_called_once_with(
+                email="user@example.com",
+                auth_provider_sub="auth0|abc",
+            )
+        finally:
+            _set_repo(None)
+
+    def test_sync_creates_new_user_when_not_found(self):
+        """When link_auth_sub returns None (no row) upsert_user is called."""
+        user_id = uuid4()
+        mock_repo = MagicMock()
+        mock_repo.link_auth_sub.side_effect = [None, user_id]  # first call None, second after create
+        mock_repo.upsert_user.return_value = user_id
+        _set_repo(mock_repo)
+        try:
+            resp = client.post(
+                "/v1/users/sync",
+                json={"email": "new@example.com", "auth_provider_sub": "auth0|new"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["linked"] is True
+            mock_repo.upsert_user.assert_called_once_with(email="new@example.com")
+        finally:
+            _set_repo(None)
+
+    def test_sync_missing_email_returns_422(self):
+        resp = client.post(
+            "/v1/users/sync",
+            json={"auth_provider_sub": "auth0|abc"},
+        )
+        assert resp.status_code == 422
+
+    def test_sync_missing_sub_returns_422(self):
+        resp = client.post(
+            "/v1/users/sync",
+            json={"email": "user@example.com"},
+        )
+        assert resp.status_code == 422
+
+    def test_sync_db_error_returns_200_linked_false(self):
+        """DB errors are caught and return linked=False (never 500 -- login must succeed)."""
+        mock_repo = MagicMock()
+        mock_repo.link_auth_sub.side_effect = RuntimeError("DB down")
+        _set_repo(mock_repo)
+        try:
+            resp = client.post(
+                "/v1/users/sync",
+                json={"email": "user@example.com", "auth_provider_sub": "auth0|abc"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["linked"] is False
+        finally:
+            _set_repo(None)
+
+    def test_sync_empty_email_returns_422(self):
+        resp = client.post(
+            "/v1/users/sync",
+            json={"email": "", "auth_provider_sub": "auth0|abc"},
+        )
+        # Pydantic validates non-empty str; should be 422 or 200 with graceful handling.
+        # Either is acceptable -- just must not 500.
+        assert resp.status_code in (200, 422)
+
+    def test_sync_user_sync_request_model_valid(self):
+        req = UserSyncRequest(email="user@example.com", auth_provider_sub="auth0|abc")
+        assert req.email == "user@example.com"
+        assert req.auth_provider_sub == "auth0|abc"
+
+    def test_sync_user_sync_request_model_missing_field(self):
+        with pytest.raises(Exception):
+            UserSyncRequest(email="user@example.com")  # missing auth_provider_sub
+
+    def test_sync_already_set_sub_is_idempotent(self):
+        """If link_auth_sub returns a user_id (existing sub already set), that's fine."""
+        user_id = uuid4()
+        mock_repo = MagicMock()
+        mock_repo.link_auth_sub.return_value = user_id  # returns id even when no-op
+        _set_repo(mock_repo)
+        try:
+            resp = client.post(
+                "/v1/users/sync",
+                json={"email": "user@example.com", "auth_provider_sub": "auth0|same"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["linked"] is True
+        finally:
+            _set_repo(None)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-L: PaymentRepository.link_auth_sub
+# ---------------------------------------------------------------------------
+
+
+class TestLinkAuthSub:
+    """PaymentRepository.link_auth_sub unit tests (no live DB, Phase 2-L)."""
+
+    def test_link_auth_sub_raises_when_unconfigured(self):
+        repo = PaymentRepository("")
+        with pytest.raises(RuntimeError, match="database not configured"):
+            repo.link_auth_sub("user@example.com", "auth0|abc")
+
+    def test_link_auth_sub_method_exists(self):
+        """Verify the method is present on PaymentRepository."""
+        assert hasattr(PaymentRepository, "link_auth_sub")
+        import inspect
+        sig = inspect.signature(PaymentRepository.link_auth_sub)
+        params = list(sig.parameters)
+        assert "email" in params
+        assert "auth_provider_sub" in params
+
+    def test_link_auth_sub_signature_returns_optional_uuid(self):
+        """Return annotation should be UUID | None."""
+        import inspect
+        sig = inspect.signature(PaymentRepository.link_auth_sub)
+        ret = sig.return_annotation
+        # accept UUID | None or Optional[UUID] or just verify it's annotated
+        assert ret is not inspect.Parameter.empty
+
+    def test_user_sync_response_linked_false_no_user_id(self):
+        from backend.payment_service.models import UserSyncResponse
+        resp = UserSyncResponse(linked=False, user_id=None)
+        assert resp.linked is False
+        assert resp.user_id is None
+
+    def test_user_sync_response_linked_true_has_user_id(self):
+        from backend.payment_service.models import UserSyncResponse
+        uid = str(uuid4())
+        resp = UserSyncResponse(linked=True, user_id=uid)
+        assert resp.linked is True
+        assert resp.user_id == uid

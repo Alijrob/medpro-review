@@ -650,3 +650,33 @@ Key design choices:
 - Auth0 JWT audience wiring: the frontend Auth0 app and the backend JWKS validation (Phase 1-F) use the same Auth0 tenant. The `AUTH0_AUDIENCE` env var must match between the two when the tenant is provisioned.
 
 **Locked:** Next.js 14 App Router, @auth0/nextjs-auth0 v3, API Route proxy pattern, CSS Modules, TanStack Query v5, Zod schema validation, port 3100, Path B cookie gate, iframe sandbox for report HTML.
+
+---
+
+## Entry 033 -- Auth0 Sub Linking + Stripe Return URL Pattern (Phase 2-L)
+
+**Date:** 2026-05-26
+**Status:** Locked
+
+### Auth0 Sub Linking: Server-to-Server Sync
+
+**Decision:** Link Auth0 `sub` to the `users` table via a new `POST /v1/users/sync` endpoint in the payment service. Called server-to-server from the Next.js `afterCallback` hook after a successful Auth0 login. No JWT validation at this endpoint.
+
+**Rationale:**
+- The `auth_provider_sub` column already exists in migration 0001 with a unique index, but `upsert_user` (Phase 2-J) left it NULL because Auth0 sub is not available at webhook time (only email + payment intent).
+- After login, the Next.js server process has both `email` and `sub` from the Auth0 session. It calls `POST /v1/users/sync` with these values.
+- No JWT validation in the payment service for this endpoint: the call originates from the Next.js server process (not from the browser), so trust is enforced by network boundary -- not by a JWT. Adding JWT validation here would duplicate auth_service JWKS logic and create a circular dependency (auth service for login, payment service for user sync, both in the same request path).
+- `link_auth_sub` is idempotent: UPDATE ... WHERE auth_provider_sub IS NULL -- no-op if sub already set.
+- `afterCallback` is best-effort: catches all errors; login must never fail because the payment service is down.
+
+### Stripe Return URL Injection at the Next.js Proxy Layer
+
+**Decision:** Inject `success_url` and `cancel_url` server-side at the Next.js API Route proxy (`/api/payments/checkout/route.ts`), not from the client component.
+
+**Rationale:**
+- `CheckoutRequest` (Phase 2-J) requires `success_url` and `cancel_url` but the frontend's `createCheckout()` helper never sent them -- this was a live 422 bug.
+- Injecting at the proxy layer keeps Stripe URL construction out of client-side code and ensures the URLs match the actual deployment environment without requiring additional env vars in the browser bundle.
+- Pattern: `success_url = {appBase}/reports/{report_id}?session_id={CHECKOUT_SESSION_ID}` where `{CHECKOUT_SESSION_ID}` is a Stripe-native template variable substituted before the redirect.
+- `appBase` is derived from `NEXT_PUBLIC_APP_URL` env var if set, otherwise from `req.headers.get("host")` with protocol inference (localhost = http, else https).
+
+**Locked:** server-to-server sync via `/v1/users/sync`; no JWT in payment service for sync; afterCallback best-effort; proxy URL injection; `{CHECKOUT_SESSION_ID}` template variable.

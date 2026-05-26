@@ -48,7 +48,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from backend.payment_service.config import get_settings
-from backend.payment_service.models import CheckoutRequest, CheckoutResponse, WebhookResponse
+from backend.payment_service.models import (
+    CheckoutRequest,
+    CheckoutResponse,
+    UserSyncRequest,
+    UserSyncResponse,
+    WebhookResponse,
+)
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -105,6 +111,65 @@ def readyz() -> dict:
         "webhook_configured": cfg.is_webhook_configured,
         "db_configured": cfg.is_db_configured,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/users/sync
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/v1/users/sync",
+    response_model=UserSyncResponse,
+    status_code=200,
+    tags=["users"],
+    summary="Link an Auth0 sub to a users row after login",
+    description=(
+        "Phase 2-L: called server-to-server from the Next.js afterCallback hook. "
+        "Links the Auth0 sub to an existing users row (created by the Stripe webhook "
+        "when the user first paid) or creates a new row for first-time login before purchase. "
+        "No JWT validation -- trust enforced by network boundary (DECISIONS.md Entry 033)."
+    ),
+)
+def sync_user(body: UserSyncRequest) -> UserSyncResponse:
+    """
+    Link an Auth0 sub to the users table.
+
+    Best-effort: if the DB is not configured, returns linked=False without error
+    so that Auth0 login never fails because the payment service is down.
+    """
+    if _repo is None:
+        log.info(
+            "POST /v1/users/sync: DB not configured -- skipping sub link for email=%s",
+            body.email,
+        )
+        return UserSyncResponse(user_id=None, linked=False)
+
+    try:
+        user_id = _repo.link_auth_sub(
+            email=body.email,
+            auth_provider_sub=body.auth_provider_sub,
+        )
+        if user_id is None:
+            # No existing row -- the user has not purchased a report yet.
+            # Create a minimal user row so we have a record on first login.
+            user_id = _repo.upsert_user(email=body.email)
+            # Now link the sub to the freshly created row.
+            _repo.link_auth_sub(email=body.email, auth_provider_sub=body.auth_provider_sub)
+            log.info(
+                "POST /v1/users/sync: new user created + sub linked. email=%s", body.email
+            )
+            return UserSyncResponse(user_id=str(user_id), linked=True)
+
+        log.info(
+            "POST /v1/users/sync: sub linked to existing user. email=%s user_id=%s",
+            body.email, user_id,
+        )
+        return UserSyncResponse(user_id=str(user_id), linked=True)
+
+    except Exception as exc:  # noqa: BLE001
+        log.error("POST /v1/users/sync: DB error: %s", exc, exc_info=True)
+        return UserSyncResponse(user_id=None, linked=False)
 
 
 # ---------------------------------------------------------------------------

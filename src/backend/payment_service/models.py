@@ -67,6 +67,42 @@ class CheckoutResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# POST /v1/users/sync
+# ---------------------------------------------------------------------------
+
+
+class UserSyncRequest(BaseModel):
+    """Request body for POST /v1/users/sync.
+
+    Called server-to-server from the Next.js afterCallback hook after a
+    successful Auth0 login.  Links the Auth0 sub to an existing users row
+    (created by the Stripe webhook) or creates a new user row.
+
+    No JWT validation at this endpoint -- the call originates from the
+    Next.js server process (trusted network boundary); adding JWT validation
+    here would duplicate auth_service logic (DECISIONS.md Entry 033).
+    """
+
+    email: str
+    """Auth0 profile email.  Used to locate or create the users row."""
+
+    auth_provider_sub: str
+    """Auth0 subject claim (sub).  e.g. 'auth0|64abc...'"""
+
+
+class UserSyncResponse(BaseModel):
+    """Response for POST /v1/users/sync."""
+
+    user_id: str | None = None
+    """UUID of the users row that was found or created.  None when DB not configured."""
+
+    linked: bool
+    """True when auth_provider_sub was written to the row.
+    False when the email was not found, the sub was already set (idempotent), or
+    the DB is not configured."""
+
+
 class WebhookResponse(BaseModel):
     """Response envelope for POST /v1/payments/webhook."""
 
