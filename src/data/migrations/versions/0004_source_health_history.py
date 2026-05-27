@@ -71,7 +71,7 @@ def upgrade() -> None:
             "recorded_at",
             sa.TIMESTAMP(timezone=True),
             nullable=False,
-            server_default=sa.text("NOW() AT TIME ZONE 'UTC'"),
+            server_default=sa.text("(NOW() AT TIME ZONE 'UTC')"),
             comment="Wall-clock time when C24 ingested this SourceHealthRecord",
         ),
     )

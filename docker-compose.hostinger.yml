@@ -1,0 +1,92 @@
+# docker-compose.hostinger.yml — Hostinger VPS validation deploy (Phase 6-A)
+#
+# Starts PostgreSQL 15 and Redis 7 for the medpro-review validation deploy.
+# OpenSearch is omitted — provider search is disabled for the Hostinger validation
+# phase. See DECISIONS.md Entry 042 for the full rationale.
+#
+# Application services (FastAPI backends, Next.js) run via PM2 — see Phase 6-B.
+#
+# All ports are bound to 127.0.0.1 only. Nginx proxies the application layer
+# (Phase 6-C). Neither Postgres nor Redis should be reachable from the internet.
+#
+# Usage on Hostinger (147.93.119.147):
+#   cd /root/medpro-review
+#   cp .env.hostinger.example .env.hostinger    # fill in passwords
+#   docker compose -f docker-compose.hostinger.yml --env-file .env.hostinger up -d
+#   docker compose -f docker-compose.hostinger.yml --env-file .env.hostinger ps
+#
+# After first start, run Phase 6-B migrations (requires Poetry install):
+#   export DATABASE_URL="postgresql+psycopg2://medpro_admin:${MEDPRO_PG_PASSWORD}@127.0.0.1:5432/medpro"
+#   cd /root/medpro-review && poetry run alembic -c src/data/migrations/alembic.ini upgrade head
+
+version: "3.9"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 15 (Aurora-compatible)
+  # Two databases provisioned by the init script:
+  #   - medpro       : main application database
+  #   - medpro_audit : append-only audit ledger (replaces QLDB, Entry 005)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: medpro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medpro_admin
+      POSTGRES_PASSWORD: ${MEDPRO_PG_PASSWORD}
+      POSTGRES_DB: medpro
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/dev-init-postgres.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medpro_admin -d medpro"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Redis 7.0 (ElastiCache-compatible)
+  # Used for: session cache, rate limiting (Phase 1-G), idempotency store (Phase 1-G)
+  # Bound to 127.0.0.1 via both --bind flag and port mapping.
+  # RDB persistence disabled (--save ""); append-only in-memory cache only.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.0-alpine
+    container_name: medpro-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${MEDPRO_REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --bind 0.0.0.0
+      --protected-mode yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${MEDPRO_REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local

@@ -36,7 +36,7 @@ def upgrade() -> None:
         CREATE OR REPLACE FUNCTION set_updated_at()
         RETURNS TRIGGER AS $$
         BEGIN
-            NEW.updated_at = NOW() AT TIME ZONE 'UTC';
+            NEW.updated_at = NOW();
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
@@ -78,9 +78,9 @@ def upgrade() -> None:
         sa.Column("human_review_required", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("human_review_notes", sa.Text, nullable=True),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("last_full_refresh_at", sa.TIMESTAMP(timezone=True), nullable=True),
     )
     op.create_index("ix_unified_id_bundles_primary_npi", "unified_id_bundles", ["primary_npi"])
@@ -123,7 +123,7 @@ def upgrade() -> None:
                   comment="DataProvenance: source, ingested_at, raw_record_hash, schema_version"),
         sa.Column("schema_version", sa.String(10), nullable=False, server_default="'v1'"),
         sa.Column("ingested_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("source_as_of", sa.Date, nullable=True,
                   comment="Date the source data was current as of"),
     )
@@ -165,9 +165,9 @@ def upgrade() -> None:
         sa.Column("has_pending_corrections", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("last_rebuilt_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
     )
     op.create_index("ix_canonical_profiles_npi", "canonical_provider_profiles", ["primary_npi"])
     op.create_index("ix_canonical_profiles_corrections",
@@ -204,7 +204,7 @@ def upgrade() -> None:
                   comment="Set if role=provider and user has claimed an NPI profile"),
         sa.Column("provider_claim_verified", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("last_login_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("deleted_at", sa.TIMESTAMP(timezone=True), nullable=True,
                   comment="CCPA soft delete — set when PII is zeroed"),
@@ -228,7 +228,7 @@ def upgrade() -> None:
         sa.Column("tos_version", sa.String(20), nullable=False,
                   comment="ToS version agreed to (e.g., tos-v1.0)"),
         sa.Column("agreed_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("ip_address", sa.String(45), nullable=True,
                   comment="IPv4 or IPv6 at time of agreement — legal evidence"),
         sa.Column("user_agent", sa.String(500), nullable=True),
@@ -287,7 +287,7 @@ def upgrade() -> None:
         sa.Column("stripe_payment_intent_id", sa.String(100), nullable=True),
         # Timestamps
         sa.Column("requested_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
@@ -334,11 +334,11 @@ def upgrade() -> None:
         sa.Column("correction_applied_at", sa.TIMESTAMP(timezone=True), nullable=True),
         # Timestamps
         sa.Column("submitted_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("target_resolution_date", sa.TIMESTAMP(timezone=True), nullable=True,
                   comment="Voluntary 30-day target — NOT a legal deadline on Path B"),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
     )
     op.create_index("ix_disputes_provider_npi", "disputes", ["provider_npi"])
     op.create_index("ix_disputes_status", "disputes", ["status"])
@@ -393,7 +393,7 @@ def upgrade() -> None:
         sa.Column("alert_suppressed_until", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("notes", sa.String(500), nullable=True),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
     )
     op.create_index("ix_source_health_source_id", "source_health_records", ["source_id"])
     op.create_index("ix_source_health_status", "source_health_records", ["status"])
@@ -430,7 +430,7 @@ def upgrade() -> None:
                   nullable=False, server_default="'{}'"),
         sa.Column("model_version", sa.String(50), nullable=False, server_default="'rule-v1'"),
         sa.Column("computed_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("valid_until", sa.TIMESTAMP(timezone=True), nullable=True),
     )
     op.create_index("ix_derived_signals_npi", "derived_signals", ["provider_npi"])

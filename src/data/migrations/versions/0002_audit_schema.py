@@ -57,7 +57,7 @@ def upgrade() -> None:
         sa.Column("event_type", sa.String(50), nullable=False,
                   comment="AuditEventType enum value (e.g., record.ingested, report.completed)"),
         sa.Column("timestamp", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'"),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')"),
                   comment="UTC time of the event — set by the application before INSERT"),
         # Who did it
         sa.Column("actor_type", sa.String(20), nullable=False,
@@ -172,7 +172,7 @@ def upgrade() -> None:
         sa.Column("event_count", sa.Integer, nullable=False,
                   comment="Total events in chain at checkpoint time"),
         sa.Column("checkpointed_at", sa.TIMESTAMP(timezone=True), nullable=False,
-                  server_default=sa.text("NOW() AT TIME ZONE 'UTC'")),
+                  server_default=sa.text("(NOW() AT TIME ZONE 'UTC')")),
         sa.Column("verified_at", sa.TIMESTAMP(timezone=True), nullable=True,
                   comment="Last time this checkpoint was verified by AuditLedgerService"),
         sa.Column("verification_passed", sa.Boolean, nullable=True),
