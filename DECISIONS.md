@@ -1298,3 +1298,55 @@ Phase 7 (new): Scale-up Deploy (EKS) -- activated when product is validated.
 Hostinger as initial deploy target; Docker Compose for Postgres + Redis;
 PM2 for FastAPI + Next.js processes; Nginx for researchyourdoctor.com vhost;
 Let's Encrypt SSL; EKS path preserved as Phase 7.
+
+---
+
+## Entry 043 -- Phase 6-A: Native Postgres + Redis instead of Docker Compose
+
+**Date:** 2026-05-27
+**Status:** Locked
+**Phase:** 6-A
+**Supersedes:** Entry 042 (partial -- the Docker Compose plan for Postgres)
+
+### Decision
+
+Hostinger already runs native PostgreSQL 16 serving 13 application databases.
+Installing Docker to run a competing Postgres instance on port 5433 would
+create operational confusion and split the server into two Postgres clusters
+with no benefit for the validation phase.
+
+**Postgres:** Use the existing native Postgres 16. Created medpro and
+medpro_audit databases under a new medpro_admin role. Granted medpro_admin
+CREATEROLE + CREATEDB privileges (sufficient for migration runner; not SUPERUSER).
+docker-compose.hostinger.yml is retained in the repo as documentation and
+for environments where a clean Docker install is preferred (e.g., a fresh VPS
+without existing Postgres).
+
+**Redis:** Installed redis-server 7.x via apt (no existing Redis on the
+server). Configured: bind 127.0.0.1, requirepass, maxmemory 256mb,
+allkeys-lru eviction, systemd enable. Functionally equivalent to the
+Docker Redis in Entry 042.
+
+### Migration fixes applied (same commit series)
+
+The Alembic migrations had never been run against a real Postgres instance.
+Six categories of fixes applied during Phase 6-A:
+
+1. `NOW() AT TIME ZONE 'UTC'` in DEFAULT clauses -- PostgreSQL CREATE TABLE
+   parser rejects this without parentheses. Fixed: wrapped in `(...)`.
+2. `server_default="'...'"` (plain Python string with inner quotes) --
+   SQLAlchemy 2.x wraps plain strings in quotes, producing triple-quoted
+   literals. Fixed: all SQL-expression defaults wrapped in `sa.text()`.
+3. `op.create_index(..., comment=...)` -- SQLAlchemy does not support
+   `comment` as a keyword arg on `create_index`. Fixed: moved to inline
+   code comments.
+4. `CREATE ROLE` without CREATEROLE -- medpro_admin lacked CREATEROLE.
+   Fixed: granted CREATEROLE to medpro_admin; made role creation idempotent
+   via PL/pgSQL DO block.
+5. `CREATE ROLE IF NOT EXISTS` -- not valid PostgreSQL syntax. Fixed: DO block
+   with `pg_roles` existence check.
+6. `ALTER ROLE ... NOSUPERUSER` -- requires SUPERUSER to set. Fixed: removed
+   NOSUPERUSER (already the default for newly created roles); kept NOCREATEDB
+   NOCREATEROLE.
+
+All 105 migration + data layer tests still pass after fixes.
