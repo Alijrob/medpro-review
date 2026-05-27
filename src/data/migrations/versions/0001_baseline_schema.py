@@ -131,7 +131,7 @@ def upgrade() -> None:
     op.create_index("ix_normalized_records_source", "normalized_records",
                     ["source_id", "source_category"])
     op.create_index("ix_normalized_records_hash", "normalized_records", ["raw_record_hash"],
-                    unique=True, comment="Deduplication — prevents re-ingesting identical raw records")
+                    unique=True)  # Deduplication -- prevents re-ingesting identical raw records
     op.create_index("ix_normalized_records_status", "normalized_records", ["status"])
     op.create_index("ix_normalized_records_type", "normalized_records", ["record_type"])
     op.create_foreign_key(
