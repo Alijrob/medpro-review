@@ -11,8 +11,7 @@ locals {
   # TODO-Entry-003: Replace with actual AWS account ID
   aws_account = "PLACEHOLDER-AWS-ACCOUNT-ID"
 
-  # TODO-Entry-003: Replace with selected region
-  aws_region = "PLACEHOLDER-AWS-REGION"
+  aws_region = "us-east-1"
 
   domain = "researchyourdoctor.com"
 

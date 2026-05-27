@@ -1245,3 +1245,56 @@ for `google_places` and `yelp`. Chains 0010 -> 0011. ON CONFLICT DO NOTHING.
 **Locked:** review_platforms subpackage; GooglePlacesConnector cursor pagination;
 YelpConnector offset/limit + 1000-cap; REVIEW_PLATFORM SourceCategory; migration 0011;
 api_key as constructor arg (never in ConnectorConfig); AuthenticationError on absent key.
+
+---
+
+## Entry 042 -- Initial Deploy: Hostinger VPS, EKS deferred (2026-05-27)
+
+### Decision
+
+The initial production deploy targets the existing Hostinger VPS (147.93.119.147) using
+Docker Compose + PM2 + Nginx. The EKS/Terraform architecture (Phase 1-B, 1-E, original
+Phase 6) is retained as code and deferred to Phase 7, which activates when the product
+has paying users and the infrastructure cost is justified.
+
+### Rationale
+
+The full EKS stack (VPC, EKS cluster, Aurora, OpenSearch, ElastiCache, NAT gateways,
+ArgoCD) costs approximately $600-900/month before any traffic. That cost is appropriate
+for a scaled, compliance-ready production system. It is not appropriate for a validation
+deploy where the goal is getting the product in front of real users to test demand.
+
+The Hostinger server already runs nginx, PM2, and Docker. The application stack fits on
+a single VPS for validation purposes.
+
+### What drops for the initial deploy
+
+- EKS cluster and all Kubernetes manifests (deferred to Phase 7)
+- Aurora PostgreSQL (replaced with Docker Postgres, same as pagios_crm pattern)
+- ElastiCache Redis (replaced with Docker Redis)
+- OpenSearch (replaced with PostgreSQL full-text search or deferred entirely)
+- Temporal workflow engine (pipeline runs synchronously for MVP)
+- Full observability stack: Grafana/Loki/Tempo/Prometheus (deferred to Phase 7)
+- ArgoCD GitOps (deferred to Phase 7)
+- S3 WORM audit chain (deferred to Phase 7, required before FCRA CRA path)
+- Chaos engineering, DR drills, SOC 2 readiness (deferred to Phase 7)
+
+### What stays
+
+- Auth0 (identity -- same SaaS, same config)
+- Stripe (payments -- same SaaS, same config)
+- researchyourdoctor.com (domain already in Route 53; DNS A record points at Hostinger)
+- All application code (FastAPI backends, Next.js frontend, report pipeline)
+- WeasyPrint PDF generation
+- The EKS/Terraform codebase (Phase 1-B, 1-E) -- retained, not deleted
+
+### Phase plan update
+
+Phase 6 (was: Hardening + Launch / EKS) is now: Validation Deploy (Hostinger).
+Phase 7 (new): Scale-up Deploy (EKS) -- activated when product is validated.
+
+### Locked
+
+Hostinger as initial deploy target; Docker Compose for Postgres + Redis;
+PM2 for FastAPI + Next.js processes; Nginx for researchyourdoctor.com vhost;
+Let's Encrypt SSL; EKS path preserved as Phase 7.
