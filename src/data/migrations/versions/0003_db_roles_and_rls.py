@@ -54,9 +54,9 @@ def upgrade() -> None:
     # -----------------------------------------------------------------
     # Create roles (idempotent — IF NOT EXISTS)
     # -----------------------------------------------------------------
-    op.execute("CREATE ROLE medpro_app LOGIN PASSWORD NULL")
-    op.execute("CREATE ROLE medpro_audit_writer LOGIN PASSWORD NULL")
-    op.execute("CREATE ROLE medpro_readonly LOGIN PASSWORD NULL")
+    op.execute("CREATE ROLE IF NOT EXISTS medpro_app LOGIN PASSWORD NULL")
+    op.execute("CREATE ROLE IF NOT EXISTS medpro_audit_writer LOGIN PASSWORD NULL")
+    op.execute("CREATE ROLE IF NOT EXISTS medpro_readonly LOGIN PASSWORD NULL")
     # Note: passwords are managed via AWS Secrets Manager in deployed envs.
     # Local dev: set passwords manually after running migrations.
 
