@@ -166,9 +166,12 @@ def upgrade() -> None:
     # Revoke superuser defaults from app roles
     # Belt-and-suspenders: ensure app roles can't bypass RLS
     # -----------------------------------------------------------------
-    op.execute("ALTER ROLE medpro_app NOSUPERUSER NOCREATEDB NOCREATEROLE")
-    op.execute("ALTER ROLE medpro_audit_writer NOSUPERUSER NOCREATEDB NOCREATEROLE")
-    op.execute("ALTER ROLE medpro_readonly NOSUPERUSER NOCREATEDB NOCREATEROLE")
+    # New roles have no SUPERUSER/CREATEDB/CREATEROLE by default.
+    # NOCREATEDB and NOCREATEROLE can be set without SUPERUSER; NOSUPERUSER requires it.
+    # Skipping NOSUPERUSER here -- it is already the default for newly created roles.
+    op.execute("ALTER ROLE medpro_app NOCREATEDB NOCREATEROLE")
+    op.execute("ALTER ROLE medpro_audit_writer NOCREATEDB NOCREATEROLE")
+    op.execute("ALTER ROLE medpro_readonly NOCREATEDB NOCREATEROLE")
 
     # -----------------------------------------------------------------
     # Seed: initial source health records (one row per P1 source)
