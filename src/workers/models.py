@@ -108,6 +108,8 @@ class GenerateReportInput(BaseModel):
     profile: dict[str, Any]
     npi: str
     include_html: bool = True
+    narrative: dict[str, Any] | None = None
+    """Serialised NarrativeResult dict from generate_ai_narrative_activity (Phase 4-H)."""
 
 
 class GenerateReportOutput(BaseModel):
@@ -129,6 +131,27 @@ class PersistReportInput(BaseModel):
 class PersistReportOutput(BaseModel):
     persisted: bool = False
     error_message: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# generate_ai_narrative_activity (Phase 4-H)
+# ---------------------------------------------------------------------------
+
+
+class GenerateNarrativeInput(BaseModel):
+    profile: dict[str, Any]
+    npi: str
+
+
+class GenerateNarrativeOutput(BaseModel):
+    narrative: dict[str, Any] | None = None
+    """Serialised NarrativeResult, or None if narrative_enabled=False or fatal error."""
+
+    fallback: bool = False
+    """True when one or more AI providers were unavailable or returned empty."""
+
+    error_message: str | None = None
+    """Set when the activity itself failed (not provider-level failures)."""
 
 
 # ---------------------------------------------------------------------------

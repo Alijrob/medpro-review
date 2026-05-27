@@ -1103,3 +1103,74 @@ for 0010 in `test_migrations.py`. Total suite: 1,669 passing, 18 skipped (PYTHON
 AuthenticationError gate before first request; list type for collection contract fields;
 numeric-to-str coercion for rating/review_count; None-to-list coercion for collection fields;
 migration 0010 chains from 0009; all three base URLs are placeholders until licenses are signed.
+
+---
+
+## Entry 040 -- Phase 4-H: Multi-Model AI Report Intelligence Layer (2026-05-27)
+
+### Decision
+
+Implement a 3-step sequential AI pipeline that enriches the ProviderReport with
+a narrative section derived from the provider's structured data.
+
+**Model routing (final):**
+
+| Step | Model | Task | Rationale |
+|------|-------|------|-----------|
+| 1 | Gemini 2.5 Pro | Research context sweep (1M token window) | Full profile JSON is large; Gemini's context window handles it cleanly |
+| 2 | Claude Opus (claude-opus-4-7) | Risk analysis + consumer summary (one call) | Coherent reasoning chain; both outputs from same model = consistent quality |
+| 3 | Claude Haiku (claude-haiku-4-5-20251001) | HTML formatting | Lightweight formatting task; no reasoning required |
+
+**GPT-4o dropped:** User identified quality concern with using GPT-4o for a
+patient-facing consumer summary. Opus produces both analysis and summary in a
+single call for a coherent reasoning chain. 2-provider architecture (Gemini +
+Anthropic) is simpler and cheaper than 3/4.
+
+### Architecture
+
+New package `src/ai/`:
+- `config.py` -- AISettings (env prefix AI_, keys default None for graceful degradation)
+- `models.py` -- NarrativeResult, NarrativeSection (JSON-serialisable, Temporal-safe)
+- `pii.py` -- Recursive PII scrubber; strips home_address/personal_phone/personal_email/dob/ssn
+- `providers/` -- BaseAIProvider ABC; GeminiProvider (google-genai SDK); AnthropicProvider (anthropic SDK)
+- `prompts/` -- build_research_prompt(); build_analysis_prompt() + parse_analysis_response(); build_format_prompt()
+- `narrative.py` -- NarrativeGenerator orchestrator (3-step, fallback-safe)
+- `router.py` -- generate_narrative() top-level convenience function
+
+New Temporal activity: `generate_ai_narrative_activity` (async, best-effort).
+Inserted as Step 5.5 between index_profile (Step 5) and generate_report (Step 6).
+
+### Fallback / Degradation
+
+- If any API key is absent, that provider silently returns "" -- pipeline degrades.
+- NarrativeResult.fallback=True marks partial pipeline runs.
+- The HTML template renders the AI section only when narrative.sections.formatted_html is non-empty.
+- generate_ai_narrative_activity is registered with _BEST_EFFORT_RETRY (maximum_attempts=1).
+  A failure in this step never aborts the pipeline; generate_report runs regardless.
+- AI_NARRATIVE_ENABLED=false bypasses the step entirely.
+
+### PII Gate
+
+scrub_pii() strips the same 5 fields as the Phase 1-D Sentry scrubber (Entry 007)
+before any prompt is constructed. The original profile dict is never mutated.
+
+### Injectable Clients
+
+Both GeminiProvider and AnthropicProvider accept an optional ``client`` callable
+for tests. Tests use no live API calls.
+
+### Tests
+
+~95 new tests across tests/ai/ and tests/workers/:
+- test_config.py: 14 tests (AISettings defaults + overrides)
+- test_models.py: 11 tests (NarrativeSection, NarrativeResult, JSON round-trip)
+- test_pii.py: 13 tests (all 5 PII fields, nested dicts, lists, no-mutation)
+- test_providers.py: 16 tests (base ABC, Gemini + Anthropic availability + injectable clients)
+- test_prompts.py: 17 tests (all 3 prompt builders + parse_analysis_response)
+- test_narrative.py: 12 tests (fallback paths, full pipeline, PII scrubbing, JSON-safe output)
+- test_generate_ai_narrative_activity.py: 9 tests (disabled flag, error handling, always-returns-output)
+
+**Locked:** 3-model routing (Gemini/Opus/Haiku); AI_ env prefix; injectable client pattern;
+narrative=None propagation through workflow; _BEST_EFFORT_RETRY for narrative activity;
+narrative_enabled feature flag; PII scrub matches Entry 007 field list;
+[RISK_ANALYSIS]/[CONSUMER_SUMMARY] markers for Opus response parsing.

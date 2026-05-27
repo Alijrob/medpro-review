@@ -29,6 +29,7 @@ import temporalio.worker
 
 from .activities import (
     fetch_source_activity,
+    generate_ai_narrative_activity,
     generate_report_activity,
     index_profile_activity,
     link_and_merge_activity,
@@ -67,6 +68,7 @@ async def run_worker() -> None:
             resolve_identity_activity,
             link_and_merge_activity,
             index_profile_activity,
+            generate_ai_narrative_activity,
             generate_report_activity,
             persist_report_activity,
         ],

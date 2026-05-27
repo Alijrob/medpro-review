@@ -44,6 +44,9 @@ class WorkerSettings(BaseSettings):
     # Persist report activity (Phase 2-I)
     persist_activity_timeout_s: int = 30  # 30 s
 
+    # AI narrative activity (Phase 4-H) -- longer to allow AI API latency
+    narrative_activity_timeout_s: int = 120  # 2 min
+
     model_config = {"env_prefix": "WORKER_", "case_sensitive": False}
 
     @property

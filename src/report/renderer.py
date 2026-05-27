@@ -3,14 +3,21 @@ renderer.py -- HTML rendering for ProviderReport (C17 basic).
 
 Uses Jinja2 to render provider_report.html.j2. Returns a UTF-8 HTML string.
 No network I/O. No WeasyPrint (PDF is Phase 5-C). This is the basic HTML shell.
+
+Phase 4-H: accepts an optional NarrativeResult; passes it to the template as
+``narrative`` so the AI narrative section renders when present.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import ProviderReport
+
+if TYPE_CHECKING:
+    from ai.models import NarrativeResult
 
 # Template directory is adjacent to this file.
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -36,12 +43,19 @@ def _get_env() -> Environment:
     return _ENV
 
 
-def render_html(report: ProviderReport, *, template_name: str = "provider_report.html.j2") -> str:
+def render_html(
+    report: ProviderReport,
+    *,
+    narrative: "NarrativeResult | None" = None,
+    template_name: str = "provider_report.html.j2",
+) -> str:
     """
     Render a ProviderReport to an HTML string.
 
     Args:
-        report: The structured report produced by build_report().
+        report:        The structured report produced by build_report().
+        narrative:     Optional NarrativeResult from the Phase 4-H AI pipeline.
+                       When present, the template renders the AI narrative section.
         template_name: Jinja2 template file name (default: provider_report.html.j2).
 
     Returns:
@@ -49,4 +63,4 @@ def render_html(report: ProviderReport, *, template_name: str = "provider_report
     """
     env = _get_env()
     template = env.get_template(template_name)
-    return template.render(report=report)
+    return template.render(report=report, narrative=narrative)

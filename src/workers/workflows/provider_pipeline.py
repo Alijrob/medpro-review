@@ -9,7 +9,9 @@ Orchestrates the full provider data pipeline for a single NPI:
     4. Resolve identity: group records into a UnifiedIdBundle.
     5. Link & merge: build a CanonicalProviderProfile.
     6. Index: write the profile to OpenSearch (best-effort; won't fail the workflow).
-    7. Generate report: build ProviderReport + render HTML.
+    5.5. AI Narrative: Gemini->Opus->Haiku pipeline (Phase 4-H, best-effort).
+    7. Generate report: build ProviderReport + render HTML (with optional AI narrative).
+    8. Persist report: write to Aurora (best-effort, only when inp.report_id is set).
 
 `is_partial` semantics (mirrors CanonicalProviderProfile.is_partial):
     - True  when any source failed or returned no records.
@@ -29,6 +31,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from workers.activities import (
         fetch_source_activity,
+        generate_ai_narrative_activity,
         generate_report_activity,
         index_profile_activity,
         link_and_merge_activity,
@@ -39,6 +42,7 @@ with workflow.unsafe.imports_passed_through():
     from workers.config import P1_SOURCE_IDS, get_settings
     from workers.models import (
         FetchSourceInput,
+        GenerateNarrativeInput,
         GenerateReportInput,
         IndexProfileInput,
         LinkAndMergeInput,
@@ -200,6 +204,16 @@ class ProviderPipelineWorkflow:
         )
 
         # ------------------------------------------------------------------
+        # Step 5.5: AI Narrative (Phase 4-H, best-effort -- won't fail pipeline)
+        # ------------------------------------------------------------------
+        narrative_out = await workflow.execute_activity(
+            generate_ai_narrative_activity,
+            GenerateNarrativeInput(profile=merge_out.profile, npi=npi),
+            start_to_close_timeout=timedelta(seconds=settings.narrative_activity_timeout_s),
+            retry_policy=_BEST_EFFORT_RETRY,
+        )
+
+        # ------------------------------------------------------------------
         # Step 6: Generate report
         # ------------------------------------------------------------------
         report_out = await workflow.execute_activity(
@@ -208,6 +222,7 @@ class ProviderPipelineWorkflow:
                 profile=merge_out.profile,
                 npi=npi,
                 include_html=inp.include_html,
+                narrative=narrative_out.narrative,
             ),
             start_to_close_timeout=timedelta(seconds=settings.report_activity_timeout_s),
             retry_policy=_DEFAULT_RETRY,

@@ -12,10 +12,14 @@ Phase 2-H activities (C15 basic + C17 basic):
 Phase 2-I activity:
     persist_report_activity      -- C18 (Aurora report persistence)
 
+Phase 4-H activity:
+    generate_ai_narrative_activity -- multi-model AI narrative (Gemini + Opus + Haiku)
+
 Activities are plain async (or sync) Python functions decorated with @activity.defn.
 They can be called directly in tests without a running Temporal server.
 """
 from .fetch import fetch_source_activity
+from .generate_ai_narrative import generate_ai_narrative_activity
 from .generate_report import generate_report_activity
 from .index import index_profile_activity
 from .link import link_and_merge_activity
@@ -29,6 +33,7 @@ __all__ = [
     "resolve_identity_activity",
     "link_and_merge_activity",
     "index_profile_activity",
+    "generate_ai_narrative_activity",
     "generate_report_activity",
     "persist_report_activity",
 ]
