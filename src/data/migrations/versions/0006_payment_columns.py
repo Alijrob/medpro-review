@@ -71,7 +71,7 @@ def upgrade() -> None:
             "payment_status",
             sa.String(20),
             nullable=False,
-            server_default="'unpaid'",
+            server_default=sa.text("'unpaid'"),
             comment="Stripe payment state: unpaid | pending | paid | refunded",
         ),
     )

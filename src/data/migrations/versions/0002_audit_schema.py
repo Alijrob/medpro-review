@@ -91,7 +91,7 @@ def upgrade() -> None:
                            "Verified on read by AuditLedgerService."),
         # Structured metadata
         sa.Column("metadata", postgresql.JSONB, nullable=False,
-                  server_default="'{}'::jsonb",
+                  server_default=sa.text("'{}'::jsonb"),
                   comment="Structured context specific to this event_type"),
     )
 
