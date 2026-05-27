@@ -102,8 +102,8 @@ def upgrade() -> None:
                     ["actor_type", "actor_id"])
     op.create_index("ix_audit_events_type", "audit_events", ["event_type"])
     op.create_index("ix_audit_events_timestamp", "audit_events", ["timestamp"])
-    op.create_index("ix_audit_events_event_hash", "audit_events", ["event_hash"], unique=True,
-                    comment="Enforces uniqueness of computed event hashes — tamper indicator")
+    op.create_index("ix_audit_events_event_hash", "audit_events", ["event_hash"], unique=True)
+    # Enforces uniqueness of computed event hashes -- tamper indicator
 
     # CHECK: event_hash must be a valid SHA-256 hex digest (64 hex chars)
     op.execute("""

@@ -96,8 +96,7 @@ def upgrade() -> None:
         "ix_health_history_source_recorded",
         "source_health_history",
         ["source_id", sa.text("recorded_at DESC")],
-        comment="Composite: per-source time-ordered history scan",
-    )
+    )  # Composite: per-source time-ordered history scan
 
     # -----------------------------------------------------------------
     # Seed Phase 2-B source IDs not present in the 0003 seed.
