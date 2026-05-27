@@ -1174,3 +1174,74 @@ for tests. Tests use no live API calls.
 narrative=None propagation through workflow; _BEST_EFFORT_RETRY for narrative activity;
 narrative_enabled feature flag; PII scrub matches Entry 007 field list;
 [RISK_ANALYSIS]/[CONSUMER_SUMMARY] markers for Opus response parsing.
+
+---
+
+## Entry 041 -- Phase 3-E: Review Platform Adapters (Google Places, Yelp Fusion)
+
+### Decision
+
+Build two SourceConnector subclasses in `src/connectors/sources/review_platforms/` for
+Phase 3-E. Both are T2 sources (API key required, ToS restrictions) and are built and
+tested stub-only. Live ingest is gated on (1) valid API keys and (2) the Phase 0 FCRA
+determination.
+
+### Sources Built
+
+| ID | Source | source_id | Auth | Pagination | Category |
+|----|--------|-----------|------|------------|----------|
+| R1 | Google Places Text Search | `google_places` | `key` query param | cursor (`next_page_token`) | REVIEW_PLATFORM |
+| R2 | Yelp Fusion Business Search | `yelp` | Bearer token | offset/limit + 1000-cap | REVIEW_PLATFORM |
+
+### Google Places Design
+
+- Endpoint: `https://maps.googleapis.com/maps/api/place/textsearch/json`
+- Cursor pagination via `next_page_token`; absent = last page. No fixed page size control
+  (Google returns up to 20 results per page regardless of request params).
+- api_key passed as query param `key` (Google standard -- NOT in Authorization header).
+- Contract (6 fields): `place_id`, `name`, `rating`, `user_ratings_total`,
+  `formatted_address`, `reviews`.
+- `rating` (float -> str), `user_ratings_total` (int -> str). `reviews` defaults to []
+  because Text Search results do not include reviews (Place Details endpoint only).
+  `_normalize_row` uses `setdefault("reviews", [])` to handle the omitted key.
+- ToS: T2 -- paid Maps Platform account; per-request pricing; caching TTL limits;
+  Google attribution required on any display. See tos-matrix.md row R1.
+
+### Yelp Fusion Design
+
+- Endpoint: `https://api.yelp.com/v3/businesses/search`
+- Offset/limit pagination (default page_size=50, Yelp max). Terminates on short-page
+  sentinel OR when `offset >= 1000` (Yelp hard cap -- API does not serve beyond 1000
+  results per search query regardless of total count).
+- Auth: `Authorization: Bearer {api_key}` header.
+- Contract (6 fields): `id`, `name`, `rating`, `review_count`, `location`, `categories`.
+- `rating` (float -> str), `review_count` (int -> str). `location` (None -> {}),
+  `categories` (None -> []). `_normalize_row` uses `setdefault` for both list/dict
+  fields to handle missing keys in partial responses.
+- ToS: T2 -- free Yelp Developer API key; 24-hour cache limit; Yelp branding required
+  on display; 1000-result hard cap per search. See tos-matrix.md row R2.
+
+### Migration 0011
+
+Seeds 2 rows into `source_health_records` (category='review_platform', status='unknown')
+for `google_places` and `yelp`. Chains 0010 -> 0011. ON CONFLICT DO NOTHING.
+
+### Tests
+
+47 new tests (24 Google Places + 23 Yelp):
+- Config identity, base URL, overrides (x2)
+- Contract harness + run health + source_id propagation (x2)
+- Pagination: cursor (Google: absent-token, next-token trigger, pagetoken forwarded,
+  3-page chain, empty); offset/limit (Yelp: short-page, 3-page, empty, offset-advance,
+  1000-cap)
+- Auth: api_key as query param + query forwarded (Google); Bearer header + term/location
+  forwarded (Yelp); no-api_key returns FAILED (x2)
+- Field normalization: camelCase field map, numeric-to-str coercion, None/absent coercion
+- Failure modes: missing field -> PARTIAL + schema drift; non-JSON; non-dict; non-list
+  container key (x2)
+
+**1,790 tests passing (18 skipped). DECISIONS.md Entry 041.**
+
+**Locked:** review_platforms subpackage; GooglePlacesConnector cursor pagination;
+YelpConnector offset/limit + 1000-cap; REVIEW_PLATFORM SourceCategory; migration 0011;
+api_key as constructor arg (never in ConnectorConfig); AuthenticationError on absent key.

@@ -47,8 +47,18 @@ Phase 3-D commercial data batch (T3/T4 licensed, see docs/reference/tos-matrix.m
     D1  Ribbon Health Provider Directory  -- connectors.sources.commercial.ribbon_health (built, 3-D)
     D2  Healthgrades Provider Profiles    -- connectors.sources.commercial.healthgrades  (built, 3-D)
     D3  Vitals Provider Profiles (WebMD)  -- connectors.sources.commercial.vitals        (built, 3-D)
+
+Phase 3-E review platform batch (T2, API key required, see docs/reference/tos-matrix.md R1-R2):
+    R1  Google Places Provider Reviews  -- connectors.sources.review_platforms.google_places (built, 3-E)
+    R2  Yelp Fusion Provider Reviews    -- connectors.sources.review_platforms.yelp          (built, 3-E)
 """
 from .clinical_trials import ClinicalTrialsConnector, clinical_trials_config
+from .review_platforms import (
+    GooglePlacesConnector,
+    google_places_config,
+    YelpConnector,
+    yelp_config,
+)
 from .commercial import (
     HealthgradesConnector,
     healthgrades_config,
@@ -152,6 +162,13 @@ __all__ = [
     # D3 -- Vitals / WebMD Health Corp. (T4, license required)
     "VitalsConnector",
     "vitals_config",
+    # Phase 3-E -- Review Platforms
+    # R1 -- Google Places (T2, paid Maps Platform API key)
+    "GooglePlacesConnector",
+    "google_places_config",
+    # R2 -- Yelp Fusion (T2, Yelp Developer API key)
+    "YelpConnector",
+    "yelp_config",
     # Phase 3-C -- Court Records
     # C2 -- CourtListener / RECAP Archive
     "CourtListenerConnector",
