@@ -435,8 +435,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_derived_signals_npi", "derived_signals", ["provider_npi"])
     op.create_index("ix_derived_signals_type", "derived_signals",
-                    ["provider_npi", "signal_type"], unique=True,
-                    comment="One active signal per type per provider")
+                    ["provider_npi", "signal_type"], unique=True)  # One active signal per type per provider
     op.create_index("ix_derived_signals_valid",
                     "derived_signals", ["valid_until"],
                     postgresql_where=sa.text("valid_until IS NOT NULL"))
