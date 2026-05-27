@@ -1007,3 +1007,99 @@ hypothetical placeholders and must be verified before live ingest.
 **Locked:** CourtListener cursor pagination, PACER 0-indexed page-number pagination,
 TX/FL offset/limit, NY page-number/next; `court_*` source ID namespace; SourceCategory.COURT;
 migration 0009 chains from 0008; all state court endpoints are placeholder defaults.
+
+---
+
+## Entry 039 -- Phase 3-D: Commercial Data Adapters (Ribbon Health, Healthgrades, Vitals)
+
+**Date:** 2026-05-27
+**Phase:** 3-D
+**Decision:** Build stub-only adapters for three commercial provider data sources (D1, D2, D3)
+using the established C9 connector framework pattern. All three require signed data license
+agreements before live ingest; all three also require the Phase 0 FCRA legal gate to close.
+
+### Source Classification
+
+| ID | Source | Tier | License Status | Source Category |
+|----|--------|------|----------------|-----------------|
+| D1 | Ribbon Health | T3 | Contract required (signed B2B agreement) | COMMERCIAL_DIRECTORY |
+| D2 | Healthgrades | T4 | License required (ToS prohibits scraping) | COMMERCIAL_DIRECTORY |
+| D3 | Vitals (WebMD) | T4 | License required (ToS prohibits scraping) | COMMERCIAL_DIRECTORY |
+
+### Adapter Design
+
+All three adapters live in `src/connectors/sources/commercial/` (new subdirectory, same
+pattern as `court_records/` and `state_boards/`). Each subclasses `SourceConnector`,
+declares a 6-field `SchemaContract`, and uses `api_key` as a constructor arg (never in
+`ConnectorConfig`).
+
+**Ribbon Health (D1 -- T3, ribbon_health):**
+- REST_API, page-number pagination via `?page=N`.
+- Response envelope: `{"data": [...], "pagination": {"current_page": N, "total_pages": N}}`.
+- Terminates when `current_page >= total_pages`.
+- Auth: `Authorization: Token <api_key>`.
+- 6-field contract: `npi`, `provider_name`, `specialty` (str), `locations`, `insurances`,
+  `affiliations` (list). Contract uses `list` type for the three collection fields.
+- `specialties` list coerced to first-element str. None lists coerced to `[]`.
+- `DEFAULT_BASE_URL = "https://api.ribbonhealth.com"`, path `/v1/custom/providers`.
+
+**Healthgrades (D2 -- T4, healthgrades):**
+- REST_API, offset/limit pagination; short-page sentinel (len(rows) < page_size).
+- Response envelope: `{"providers": [...], "total": N}`.
+- Auth: `Authorization: Bearer <api_key>`.
+- 6-field contract: `npi`, `provider_name`, `specialty`, `rating`, `review_count` (str),
+  `board_certifications` (list). Numeric `rating`/`review_count` coerced to str.
+  None `board_certifications` coerced to `[]`.
+- `DEFAULT_BASE_URL = "https://api.healthgrades.com"` (placeholder -- confirmed at
+  contract time).
+
+**Vitals (D3 -- T4, vitals):**
+- Same offset/limit pattern as Healthgrades.
+- 6-field contract: `npi`, `provider_name`, `specialty`, `rating`, `review_count` (str),
+  `education` (list). Same numeric coercion. None `education` coerced to `[]`.
+- `training` key alias maps to `education`.
+- `DEFAULT_BASE_URL = "https://api.vitals.com"` (placeholder -- confirmed at contract time).
+- Source name includes "WebMD Health Corp." (parent company).
+
+### AuthenticationError Gate
+
+All three adapters raise `AuthenticationError` inside `fetch_raw()` if `api_key` is absent.
+`run()` catches this and returns `FetchStatus.FAILED` with an error message containing
+"api_key is required". This surfaces the missing license credential before any network I/O
+is attempted and makes the license requirement visible in the health monitor.
+
+### Schema Contract Field Types
+
+The `SchemaContract` supports non-str field_types (the validator uses `isinstance`). Phase 3-D
+is the first use of `list` type in a contract (for locations/insurances/affiliations on Ribbon,
+board_certifications on Healthgrades, and education on Vitals). This is intentional: these
+fields are structural collections, not scalars, and the type guard correctly detects if the
+API returns a non-list (e.g., a str) for those fields.
+
+### Migration 0010
+
+Seeds 3 rows into `source_health_records` (status=unknown, category='commercial_directory').
+Chains from 0009. ON CONFLICT DO NOTHING for idempotency. Downgrade DELETEs only
+the 3 phase-3-D source IDs.
+
+### Legal Gate Summary
+
+| Source | Engineering Gate | Legal Gate |
+|--------|-----------------|-----------|
+| Ribbon Health (D1) | api_key from signed contract | FCRA Phase 0 + Ribbon license |
+| Healthgrades (D2) | api_key + base_url from signed license | FCRA Phase 0 + Healthgrades license |
+| Vitals (D3) | api_key + base_url from signed license | FCRA Phase 0 + Vitals/WebMD license |
+
+Note: source-priority.md rates Vitals at V=2 vs. Healthgrades at V=3. If Healthgrades (D2)
+is licensable, Vitals (D3) may be redundant. Both adapters are built; product decision on
+whether to pursue Vitals separately is deferred to the contract phase.
+
+### Tests
+
+65 new tests: 21 (ribbon_health) + 21 (healthgrades) + 23 (vitals). Plus 9 new migration tests
+for 0010 in `test_migrations.py`. Total suite: 1,669 passing, 18 skipped (PYTHONPATH=src:.).
+
+**Locked:** COMMERCIAL_DIRECTORY category; commercial/ subdirectory; api_key constructor arg;
+AuthenticationError gate before first request; list type for collection contract fields;
+numeric-to-str coercion for rating/review_count; None-to-list coercion for collection fields;
+migration 0010 chains from 0009; all three base URLs are placeholders until licenses are signed.

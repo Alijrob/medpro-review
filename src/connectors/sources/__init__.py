@@ -42,8 +42,21 @@ Phase 3-C court record batch (C1-C2 P2 + state courts early P3 exploration):
     TX  Texas Courts Search           -- connectors.sources.court_records.tx_courts      (built, 3-C)
     FL  Florida eCourts               -- connectors.sources.court_records.fl_courts      (built, 3-C)
     NY  New York eCourts WebCivil     -- connectors.sources.court_records.ny_courts      (built, 3-C)
+
+Phase 3-D commercial data batch (T3/T4 licensed, see docs/reference/tos-matrix.md D1-D3):
+    D1  Ribbon Health Provider Directory  -- connectors.sources.commercial.ribbon_health (built, 3-D)
+    D2  Healthgrades Provider Profiles    -- connectors.sources.commercial.healthgrades  (built, 3-D)
+    D3  Vitals Provider Profiles (WebMD)  -- connectors.sources.commercial.vitals        (built, 3-D)
 """
 from .clinical_trials import ClinicalTrialsConnector, clinical_trials_config
+from .commercial import (
+    HealthgradesConnector,
+    healthgrades_config,
+    RibbonHealthConnector,
+    ribbon_health_config,
+    VitalsConnector,
+    vitals_config,
+)
 from .court_records import (
     CourtListenerConnector,
     court_listener_config,
@@ -129,6 +142,16 @@ __all__ = [
     "IlIdfprConnector",
     "il_idfpr_config",
     # Phase 3-B -- State Boards (GA/PA/OH/MI/NC) -- exported via state_boards package
+    # Phase 3-D -- Commercial Data Adapters
+    # D1 -- Ribbon Health (T3, contract required)
+    "RibbonHealthConnector",
+    "ribbon_health_config",
+    # D2 -- Healthgrades (T4, license required)
+    "HealthgradesConnector",
+    "healthgrades_config",
+    # D3 -- Vitals / WebMD Health Corp. (T4, license required)
+    "VitalsConnector",
+    "vitals_config",
     # Phase 3-C -- Court Records
     # C2 -- CourtListener / RECAP Archive
     "CourtListenerConnector",

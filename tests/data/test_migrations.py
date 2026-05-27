@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 MIGRATIONS_DIR = Path("src/data/migrations/versions")
-EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"]
+EXPECTED_REVISIONS = ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010"]
 
 # ---------------------------------------------------------------------------
 # Unit tests — no database required
@@ -51,6 +51,7 @@ class TestMigrationFiles:
         assert revisions.get("0007") == "0006", "0007 must reference 0006"
         assert revisions.get("0008") == "0007", "0008 must reference 0007"
         assert revisions.get("0009") == "0008", "0009 must reference 0008"
+        assert revisions.get("0010") == "0009", "0010 must reference 0009"
 
     def test_0001_creates_all_main_tables(self):
         text = (MIGRATIONS_DIR / "0001_baseline_schema.py").read_text()
@@ -621,3 +622,59 @@ class TestMigrationsRun:
                             :hash, '{}'::jsonb, '{}'::jsonb)
                 """), {"npi": test_npi, "hash": test_hash})
                 conn.commit()
+
+
+class TestMigration0010:
+    """Migration 0010 -- Phase 3-D commercial source seed rows (Ribbon/Healthgrades/Vitals)."""
+
+    def test_0010_file_exists(self):
+        assert (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").exists(), (
+            "Migration 0010 file not found"
+        )
+
+    def test_0010_references_0009(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        assert '"0009"' in text, "0010 must reference 0009 as down_revision"
+
+    def test_0010_seeds_all_three_commercial_sources(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        for source_id in ("ribbon_health", "healthgrades", "vitals"):
+            assert source_id in text, f"0010 must seed '{source_id}'"
+
+    def test_0010_does_not_seed_court_ids(self):
+        """Court source IDs must not appear in 0010 (they belong in 0009)."""
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        for source_id in ("court_listener", "pacer", "court_tx", "court_fl", "court_ny"):
+            assert source_id not in text, (
+                f"0010 must not seed court source {source_id}"
+            )
+
+    def test_0010_uses_on_conflict_do_nothing(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        assert "ON CONFLICT" in text.upper(), (
+            "0010 seed INSERT must be idempotent (ON CONFLICT DO NOTHING)"
+        )
+
+    def test_0010_targets_source_health_records(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        assert "source_health_records" in text, (
+            "0010 must INSERT into source_health_records"
+        )
+
+    def test_0010_sets_commercial_directory_category(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        assert "'commercial_directory'" in text, (
+            "0010 seeded rows must use 'commercial_directory' as source_category"
+        )
+
+    def test_0010_has_downgrade(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        assert "downgrade" in text.lower()
+        assert "DELETE" in text.upper(), "0010 downgrade must DELETE the seeded rows"
+
+    def test_0010_downgrade_targets_3d_ids_only(self):
+        text = (MIGRATIONS_DIR / "0010_commercial_source_seeds.py").read_text()
+        for source_id in ("ribbon_health", "healthgrades", "vitals"):
+            assert source_id in text, (
+                f"0010 downgrade must reference '{source_id}'"
+            )
